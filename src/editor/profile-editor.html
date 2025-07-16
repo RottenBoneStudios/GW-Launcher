@@ -1,0 +1,185 @@
+<!--   GW Launcher – profile-editor.html   -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Editor de perfil</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <style>
+        body {
+            -webkit-app-region: no-drag;
+            background: var(--bg-card);
+        }
+
+        textarea {
+            resize: none;
+        }
+
+        .editor {
+            max-width: 480px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            display: grid;
+            gap: 1rem;
+        }
+
+        .editor h2 {
+            text-align: center;
+            font-size: 1.3rem;
+            margin-bottom: .5rem;
+        }
+
+        .editor__field {
+            display: flex;
+            flex-direction: column;
+            gap: .25rem;
+        }
+
+        .editor__field select#version {
+            max-height: 12em;
+            overflow-y: auto;
+        }
+
+        .editor__buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .editor__buttons button {
+            flex: 1;
+            padding: .75rem;
+            border: none;
+            border-radius: .75rem;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .editor__buttons button:hover {
+            background: var(--primary-hov);
+        }
+    </style>
+</head>
+
+<body>
+    <form class="editor" id="editor">
+        <h2 id="editor-title">Nuevo perfil</h2>
+
+        <div class="editor__field">
+            <label for="prof-name">Nombre del perfil</label>
+            <input id="prof-name" required />
+        </div>
+
+        <div class="editor__field">
+            <label for="username">Username</label>
+            <input id="username" maxlength="16" placeholder="Steve" />
+        </div>
+
+        <div class="editor__field">
+            <label for="version">Versión</label>
+            <select id="version">
+                <option value="" disabled selected>Selecciona una versión</option>
+                <option value="1.7.10">1.7.10</option>
+                <option value="1.8">1.8</option>
+                <option value="1.8.1">1.8.1</option>
+                <option value="1.8.2">1.8.2</option>
+                <option value="1.8.3">1.8.3</option>
+                <option value="1.8.4">1.8.4</option>
+                <option value="1.8.5">1.8.5</option>
+                <option value="1.8.6">1.8.6</option>
+                <option value="1.8.7">1.8.7</option>
+                <option value="1.8.8">1.8.8</option>
+                <option value="1.8.9">1.8.9</option>
+                <option value="1.9">1.9</option>
+                <option value="1.9.1">1.9.1</option>
+                <option value="1.9.2">1.9.2</option>
+                <option value="1.9.3">1.9.3</option>
+                <option value="1.9.4">1.9.4</option>
+                <option value="1.10">1.10</option>
+                <option value="1.10.1">1.10.1</option>
+                <option value="1.10.2">1.10.2</option>
+                <option value="1.11">1.11</option>
+                <option value="1.11.1">1.11.1</option>
+                <option value="1.11.2">1.11.2</option>
+                <option value="1.12">1.12</option>
+                <option value="1.12.1">1.12.1</option>
+                <option value="1.12.2">1.12.2</option>
+                <option value="1.13">1.13</option>
+                <option value="1.13.1">1.13.1</option>
+                <option value="1.13.2">1.13.2</option>
+                <option value="1.14">1.14</option>
+                <option value="1.14.1">1.14.1</option>
+                <option value="1.14.2">1.14.2</option>
+                <option value="1.14.3">1.14.3</option>
+                <option value="1.14.4">1.14.4</option>
+                <option value="1.15">1.15</option>
+                <option value="1.15.1">1.15.1</option>
+                <option value="1.15.2">1.15.2</option>
+                <option value="1.16">1.16</option>
+                <option value="1.16.1">1.16.1</option>
+                <option value="1.16.2">1.16.2</option>
+                <option value="1.16.3">1.16.3</option>
+                <option value="1.16.4">1.16.4</option>
+                <option value="1.16.5">1.16.5</option>
+                <option value="1.17">1.17</option>
+                <option value="1.17.1">1.17.1</option>
+                <option value="1.18">1.18</option>
+                <option value="1.18.1">1.18.1</option>
+                <option value="1.18.2">1.18.2</option>
+                <option value="1.19">1.19</option>
+                <option value="1.19.1">1.19.1</option>
+                <option value="1.19.2">1.19.2</option>
+                <option value="1.19.3">1.19.3</option>
+                <option value="1.19.4">1.19.4</option>
+                <option value="1.20">1.20</option>
+                <option value="1.20.1">1.20.1</option>
+                <option value="1.20.2">1.20.2</option>
+                <option value="1.20.3">1.20.3</option>
+                <option value="1.20.4">1.20.4</option>
+                <option value="1.20.5">1.20.5</option>
+                <option value="1.20.6">1.20.6</option>
+                <option value="1.21">1.21</option>
+                <option value="1.21.1">1.21.1</option>
+                <option value="1.21.2">1.21.2</option>
+                <option value="1.21.3">1.21.3</option>
+                <option value="1.21.4">1.21.4</option>
+                <option value="1.21.5">1.21.5</option>
+                <option value="1.21.6">1.21.6</option>
+                <option value="1.21.7">1.21.7</option>
+            </select>
+        </div>
+
+        <div class="editor__field">
+            <label for="modloader">Mod-loader</label>
+            <select id="modloader">
+                <option value="vanilla">Vanilla</option>
+                <option value="forge">Forge</option>
+                <option value="fabric">Fabric</option>
+            </select>
+        </div>
+
+        <div class="editor__field">
+            <label for="ram">RAM (MiB)</label>
+            <input id="ram" type="number" placeholder="4096" />
+        </div>
+
+        <div class="editor__field">
+            <label for="jvm-flags">JVM flags (espacio-separados)</label>
+            <textarea id="jvm-flags" rows="3"></textarea>
+        </div>
+
+        <div class="editor__buttons">
+            <button type="button" id="btn-opt">Flags recomendadas</button>
+            <button type="submit">Guardar</button>
+        </div>
+    </form>
+
+    <script src="editor.js"></script>
+</body>
+
+</html>

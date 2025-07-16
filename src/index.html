@@ -1,26 +1,38 @@
+<!--   GW Launcher – index.html   -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GW Launcher</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <h1>GW Launcher</h1>
+  <div class="window">
+    <!-- ───────────── Sidebar ───────────── -->
+    <aside class="sidebar">
+      <h2 class="sidebar__title">Perfiles</h2>
+      <ul id="profile-list" class="sidebar__list"></ul>
 
-  <div><label>Username:</label><input id="username" type="text" maxlength="16"></div>
-  <div><label>Version:</label><input id="version" type="text" placeholder="1.21.1"></div>
-  <div><label>Mod-loader:</label>
-       <select id="modloader">
-         <option value="">None</option>
-         <option value="forge">Forge</option>
-         <option value="fabric">Fabric</option>
-         <option value="neoforge">NeoForge</option>
-       </select></div>
-  <div><label>RAM (MiB):</label><input id="ram" type="number" placeholder="4096"></div>
+      <button id="btn-new-profile" class="sidebar__new">＋ Crear perfil</button>
+      <button id="btn-edit-profile" class="sidebar__edit" disabled>✎ Editar perfil</button>
+    </aside>
 
-  <button onclick="launchMinecraft()">Launch</button>
-  <pre id="log"></pre>
+    <!-- ──────────── Contenido ──────────── -->
+    <main class="content">
+      <header class="headline">
+        <h1 id="profile-headline">Selecciona un perfil</h1>
+      </header>
+
+      <section id="news" class="news">
+        <p class="news__placeholder">
+          ℹ️ Aquí aparecerán las noticias y changelogs de Minecraft…
+        </p>
+      </section>
+
+      <button id="btn-launch" class="launch" disabled>Iniciar</button>
+    </main>
+  </div>
 
   <script src="renderer.js"></script>
 </body>
