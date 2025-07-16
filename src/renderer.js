@@ -1,5 +1,3 @@
-// renderer.js
-
 const { spawn } = require('child_process')
 const { ipcRenderer, shell } = require('electron')
 const path = require('path')
@@ -68,6 +66,45 @@ function renderProfileList() {
         active ? `Perfil: ${active}` : 'Selecciona un perfil'
 }
 
+function getParticleImage() {
+    const date = new Date()
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+
+    if ((month === 9 && day >= 21) || month === 10 || month === 11 || (month === 12 && day <= 20)) {
+        return '../assets/leaf.webp'
+    } else if ((month === 12 && day >= 21) || month === 1 || month === 2 || (month === 3 && day <= 20)) {
+        return '../assets/sunflower.webp'
+    } else if ((month === 3 && day >= 21) || month === 4 || month === 5 || (month === 6 && day <= 20)) {
+        return '../assets/leaf.webp'
+    } else {
+        return '../assets/snow.webp'
+    }
+}
+
+function renderParticles() {
+    const container = $('.particle-container')
+    const particleCount = 15
+    const particleImage = getParticleImage()
+
+    for (let i = 0; i < particleCount; i++) {
+        const particle = document.createElement('img')
+        particle.src = particleImage
+        particle.classList.add('particle')
+        particle.style.left = `${Math.random() * 100}%`
+        particle.style.animationDelay = `${Math.random() * 5}s`
+        particle.style.animationDuration = `${8 + Math.random() * 4}s`
+        
+        const swayAmount = (Math.random() - 0.5) * 50;
+        particle.style.setProperty('--sway', `${swayAmount}px`);
+        
+        const rotateAmount = Math.random() * 360;
+        particle.style.setProperty('--rotate', `${rotateAmount}deg`);
+        
+        container.appendChild(particle)
+    }
+}
+
 function launch() {
     if (!active) return
     const p = profiles[active]
@@ -94,6 +131,7 @@ function launch() {
 window.addEventListener('DOMContentLoaded', () => {
     profiles = loadProfiles()
     renderProfileList()
+    renderParticles()
 
     $('#btn-new-profile').onclick = () => ipcRenderer.send('open-editor', null)
     $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
