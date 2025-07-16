@@ -109,8 +109,8 @@ $ npm run build
 Por defecto generará instaladores en `dist/`:
 
 * **Windows** → `GW Launcher Setup x.x.x.exe` (NSIS)
-* **macOS**  → `GW Launcher.dmg`
-* **Linux**  → `GW Launcher.AppImage` (si se configura)
+* **macOS**  → `GW Launcher.dmg` (PROXIMAMENTE)
+* **Linux**  → `GW Launcher.AppImage` (PROXIMAMENTE)
 
 Ajusta la sección **`build`** de `package.json` para cambiar íconos, targets o metadatos.
 
@@ -137,7 +137,6 @@ Ajusta la sección **`build`** de `package.json` para cambiar íconos, targets o
 | -------------------- | ----------------------------------------------------------------------------------------- | ------ | ----------- |
 | `install <ver>`      | Descarga o actualiza la versión indicada.                                                 |        |             |
 | `launch <ver> <usr>` | Lanza el juego en modo offline. Args extra:<br>• `--ram <MiB>`<br>• \`--modloader \<forge | fabric | neoforge>\` |
-| `versions`           | Muestra el catálogo oficial en JSON.                                                      |        |             |
 
 ## Contribuir
 
