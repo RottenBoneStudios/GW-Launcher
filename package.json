@@ -1,0 +1,28 @@
+{
+  "name": "gw-launcher",
+  "version": "1.0.0",
+  "description": "Minecraft No-Premium Launcher",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.rottenbonestudio.gwlauncher",
+    "productName": "GW Launcher",
+    "win": {
+      "target": "nsis",
+      "icon": "src/icon.ico"
+    },
+    "files": [
+      "main.js",
+      "src/**/*",
+      "python/**/*"
+    ]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}

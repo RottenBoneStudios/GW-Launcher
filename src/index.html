@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GW Launcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>GW Launcher</h1>
+
+  <div><label>Username:</label><input id="username" type="text" maxlength="16"></div>
+  <div><label>Version:</label><input id="version" type="text" placeholder="1.21.1"></div>
+  <div><label>Mod-loader:</label>
+       <select id="modloader">
+         <option value="">None</option>
+         <option value="forge">Forge</option>
+         <option value="fabric">Fabric</option>
+         <option value="neoforge">NeoForge</option>
+       </select></div>
+  <div><label>RAM (MiB):</label><input id="ram" type="number" placeholder="4096"></div>
+
+  <button onclick="launchMinecraft()">Launch</button>
+  <pre id="log"></pre>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
