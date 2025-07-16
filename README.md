@@ -29,7 +29,7 @@ Diseñado para ser **multiplataforma** (Windows, macOS y Linux) y fácil de clon
 ## Características
 
 * Descarga automática de cualquier versión oficial de Minecraft.
-* Soporte opcional para **Forge**, **Fabric** y **NeoForge**.
+* Soporte opcional para **Forge**, **Fabric** y **Vanilla**.
 * Ejecución *offline* con UUID determinista por nombre de usuario.
 * Persiste el último perfil usado en `~/.gwlauncher/profiles.json`.
 * CLI de backend para instalar, lanzar o listar versiones sin abrir la GUI.
