@@ -1,6 +1,6 @@
 {
   "name": "gw-launcher",
-  "version": "1.0.0v",
+  "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
   "main": "main.js",
   "scripts": {
