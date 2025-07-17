@@ -143,6 +143,9 @@ window.addEventListener('DOMContentLoaded', () => {
     $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
     $('#btn-launch').onclick = launch
 	
+	$('#minimize-btn').onclick = () => ipcRenderer.send('window-minimize');
+    $('#close-btn').onclick    = () => ipcRenderer.send('close-launcher');
+	
     ipcRenderer.on('profile-saved', (_e, name) => {
         profiles = loadProfiles()
         active = name

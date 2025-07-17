@@ -12,6 +12,9 @@ function createWindow() {
     height: 680,
     resizable: false,
     show: false,
+	frame: false,
+    autoHideMenuBar: true,
+	transparent: true,
     backgroundColor: '#151738',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -19,7 +22,6 @@ function createWindow() {
       contextIsolation: false
     }
   })
-
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'))
 
   mainWindow.once('ready-to-show', () => {
@@ -38,6 +40,9 @@ ipcMain.on('open-editor', (_e, name) => {
     width: 500,
     height: 620,
     show: false,
+	frame: false,
+    autoHideMenuBar: true,
+	transparent: true,
     backgroundColor: '#151738',
     webPreferences: {
       nodeIntegration: true,
@@ -95,3 +100,11 @@ app.on('activate', () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});

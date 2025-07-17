@@ -16,13 +16,13 @@
     },
     "files": [
       "main.js",
-	  "preload.js",
-	  "assets/**/*",
+      "preload.js",
+      "assets/**/*",
       "src/**/*"
     ]
   },
   "devDependencies": {
-    "electron": "^25.9.8",
+    "electron": "^37.2.3",
     "electron-builder": "^24.0.0"
   }
 }

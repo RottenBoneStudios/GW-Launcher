@@ -22,6 +22,14 @@ const recommendedFlags = [
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(location.search);
     const profName = params.get('name');
+    const btnClose = document.getElementById('close-btn');
+	
+    if (btnClose) {
+    btnClose.addEventListener('click', () => {
+        window.close();
+      });
+    }
+  
     if (profName) {
         document.getElementById('editor-title').textContent = `Editar perfil: ${profName}`;
         document.getElementById('prof-name').value = profName;
