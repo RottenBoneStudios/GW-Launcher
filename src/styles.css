@@ -1,28 +1,29 @@
-/*--   GW Launcher – styles.css   */
+/*--   GW Launcher – GALAXY NEON THEME   */
 /* ---------- Reset + paleta ---------- */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
   margin: 0;
-  padding: 0
+  padding: 0;
 }
 
 :root {
-  --bg: #1e1e1e;
-  --bg-card: #222;
-  --bg-sidebar: #181818;
-  --fg: #eee;
-  --primary: #3b82f6;
-  --primary-hov: #2563eb;
-  --accent: #16a34a;
+  --bg: #0b0c22;
+  --bg-card: #151738;
+  --bg-sidebar: #0d0f2c;
+  --fg: #e5e8ff;
+  --primary: #9333ea;
+  --primary-hov: #a855f7;
+  --accent: #06b6d4;
+  --launch-gradient: linear-gradient(90deg, #9333ea, #06b6d4);
   --radius: 1rem;
 }
 
 /* ---------- Layout principal ---------- */
 body {
   font-family: system-ui, Arial, sans-serif;
-  background: linear-gradient(135deg, var(--bg), #2c2c2c);
+  background: transparent;
   color: var(--fg);
   height: 100vh;
   display: flex;
@@ -32,38 +33,30 @@ body {
 }
 
 .window {
-  width: 90vw;
-  max-width: 1080px;
-  height: 90vh;
-  max-height: 720px;
+  width: 100vw;
+  height: 100vh;
   display: flex;
-  border-radius: var(--radius);
+  border-radius: 0;
   background: var(--bg-card);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  border: none;
+  box-shadow: none;
   overflow: hidden;
   position: relative;
   transition: all 0.3s ease;
 }
 
-/* ---------- Partículas ---------- */
+/* ---------- Partículas (estrellas) ---------- */
 .particle-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 10;
-  overflow: hidden;
+  z-index: 2;
 }
 
 .particle {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 15px;
+  height: 15px;
   opacity: 0;
-  animation: float 8s linear infinite;
   transform: translateY(-100%);
+  animation: float 10s linear infinite;
 }
 
 @keyframes float {
@@ -72,23 +65,14 @@ body {
     opacity: 0;
   }
   10% {
-    opacity: 1;
+    opacity: 0.5;
   }
   90% {
-    opacity: 1;
+    opacity: 0.5;
   }
   100% {
     transform: translateY(10vh) translateX(0) rotate(var(--rotate));
     opacity: 0;
-  }
-}
-
-@keyframes sway {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(20px);
   }
 }
 
@@ -142,6 +126,7 @@ body {
   border-radius: .5rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .sidebar__list li.active {
@@ -150,7 +135,7 @@ body {
 }
 
 .sidebar__list li:hover:not(.active) {
-  background: #2c2c2c;
+  background: #1e1e3f;
   transform: scale(1.05);
 }
 
@@ -175,7 +160,7 @@ body {
 .sidebar__edit:not([disabled]):hover {
   background: var(--primary-hov);
   transform: scale(1.05) translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
 }
 
 /* ---------- Contenido ---------- */
@@ -189,6 +174,7 @@ body {
   overflow: hidden;
   transition: all 0.3s ease;
   z-index: 1;
+  background: var(--bg-card);
 }
 
 .headline h1 {
@@ -218,12 +204,12 @@ body {
   padding: 1rem 2.5rem;
   border: none;
   border-radius: 2rem;
-  background: var(--accent);
+  background: var(--launch-gradient);
   color: #fff;
   font-weight: 700;
   font-size: 1.1rem;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .3);
+  box-shadow: 0 0 16px #06b6d4;
   transition: all 0.3s ease;
   animation: fadeIn 0.5s ease;
   z-index: 1;
@@ -237,14 +223,10 @@ body {
 .launch:not([disabled]):hover {
   filter: brightness(1.1);
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+  box-shadow: 0 0 24px #06b6d4;
 }
 
-/* ---------- Ventana de confirmar borrado ---------- */
-.sidebar__list li {
-  position: relative;
-}
-
+/* ---------- Botones en lista ---------- */
 .folder-btn,
 .delete-btn {
   display: none;

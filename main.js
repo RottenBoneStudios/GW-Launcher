@@ -11,14 +11,20 @@ function createWindow() {
     width: 900,
     height: 680,
     resizable: false,
+    show: false,
+    backgroundColor: '#151738',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
-      contextIsolation: false,
-      nativeWindowOpen: true,
-      enableRemoteModule: true
+      contextIsolation: false
     }
   })
+
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'))
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+  })
 }
 
 ipcMain.on('profile-saved', (_e, name) => {
@@ -31,12 +37,22 @@ ipcMain.on('open-editor', (_e, name) => {
     modal: true,
     width: 500,
     height: 620,
+    show: false,
+    backgroundColor: '#151738',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     }
   })
-  editor.loadFile(path.join(__dirname, 'src', 'editor', 'profile-editor.html'), { query: name ? { name } : {} })
+
+  editor.loadFile(
+    path.join(__dirname, 'src', 'editor', 'profile-editor.html'),
+    { query: name ? { name } : {} }
+  )
+
+  editor.once('ready-to-show', () => {
+    editor.show()
+  })
 })
 
 ipcMain.on('open-delete-confirm', (_e, name) => {

@@ -83,26 +83,32 @@ function getParticleImage() {
 }
 
 function renderParticles() {
-    const container = $('.particle-container')
-    const particleCount = 15
-    const particleImage = getParticleImage()
+  const container = document.querySelector('.particle-container')
+  const particleCount = 15
+  const particleImage = getParticleImage()
 
-    for (let i = 0; i < particleCount; i++) {
-        const particle = document.createElement('img')
-        particle.src = particleImage
-        particle.classList.add('particle')
-        particle.style.left = `${Math.random() * 100}%`
-        particle.style.animationDelay = `${Math.random() * 5}s`
-        particle.style.animationDuration = `${8 + Math.random() * 4}s`
-        
-        const swayAmount = (Math.random() - 0.5) * 50;
-        particle.style.setProperty('--sway', `${swayAmount}px`);
-        
-        const rotateAmount = Math.random() * 360;
-        particle.style.setProperty('--rotate', `${rotateAmount}deg`);
-        
-        container.appendChild(particle)
-    }
+  const redLine = document.querySelector('.red-line')
+  const containerTop = container.getBoundingClientRect().top
+  const redY = redLine
+    ? redLine.getBoundingClientRect().top - containerTop
+    : 0
+
+  for (let i = 0; i < particleCount; i++) {
+    const p = document.createElement('img')
+    p.src = particleImage
+    p.classList.add('particle')
+    p.style.left = `${Math.random() * 100}%`
+    p.style.top  = `${redY}px`
+    p.style.animationDelay    = `${Math.random() * 5}s`
+    p.style.animationDuration = `${8 + Math.random() * 4}s`
+
+    const swayAmount   = (Math.random() - 0.5) * 50
+    const rotateAmount = Math.random() * 360
+    p.style.setProperty('--sway',   `${swayAmount}px`)
+    p.style.setProperty('--rotate', `${rotateAmount}deg`)
+
+    container.appendChild(p)
+  }
 }
 
 function launch() {
@@ -136,7 +142,7 @@ window.addEventListener('DOMContentLoaded', () => {
     $('#btn-new-profile').onclick = () => ipcRenderer.send('open-editor', null)
     $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
     $('#btn-launch').onclick = launch
-
+	
     ipcRenderer.on('profile-saved', (_e, name) => {
         profiles = loadProfiles()
         active = name

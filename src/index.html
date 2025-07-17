@@ -11,35 +11,25 @@
 
 <body>
   <div class="window">
-    <!-- ───────────── Partículas ───────────── -->
     <div class="particle-container"></div>
-
-    <!-- ───────────── Sidebar ───────────── -->
     <aside class="sidebar">
       <h2 class="sidebar__title">Perfiles</h2>
       <ul id="profile-list" class="sidebar__list"></ul>
-
       <button id="btn-new-profile" class="sidebar__new">＋ Crear perfil</button>
       <button id="btn-edit-profile" class="sidebar__edit" disabled>✎ Editar perfil</button>
     </aside>
-
-    <!-- ──────────── Contenido ──────────── -->
     <main class="content">
       <header class="headline">
         <h1 id="profile-headline">Selecciona un perfil</h1>
       </header>
-
       <section id="news" class="news">
         <p class="news__placeholder">
           ℹ️ Aquí aparecerán las noticias y changelogs de Minecraft…
         </p>
       </section>
-
       <button id="btn-launch" class="launch" disabled>Iniciar</button>
     </main>
   </div>
-
   <script src="renderer.js"></script>
 </body>
-
 </html>
