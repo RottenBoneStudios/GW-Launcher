@@ -2,7 +2,7 @@
   "name": "gw-launcher",
   "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
-  "author": "Anyelo120",
+  "author": "Anyelo120 @ rottenbone.studio120@gmail.com",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
