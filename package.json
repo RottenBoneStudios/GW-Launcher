@@ -2,7 +2,7 @@
   "name": "gw-launcher",
   "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
-  "author": "Anyelo120 @ rottenbone.studio120@gmail.com",
+  "author": "Anyelo120 <rottenbone.studio120@gmail.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -14,6 +14,8 @@
   "build": {
     "appId": "com.rottenbonestudio.gwlauncher",
     "productName": "GW Launcher",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "icon": "src/icon",  
     "files": [
       "main.js",
       "preload.js",
@@ -21,11 +23,11 @@
       "src/**/*"
     ],
     "win": {
-      "icon": "src/icon.ico",
+      "icon": "src/icon.png",
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64","ia32"]
+          "arch": ["x64", "ia32"]
         }
       ]
     },
@@ -34,8 +36,8 @@
       "perMachine": true,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "src/icon.ico",
-      "uninstallerIcon": "src/icon.ico",
+      "installerIcon": "src/icon.png",
+      "uninstallerIcon": "src/icon.png",
       "license": "LICENSE.txt"
     },
     "mac": {
@@ -45,12 +47,11 @@
         "dmg",
         {
           "target": "pkg",
-          "arch": ["x64","arm64"]
+          "arch": ["x64", "arm64"]
         }
       ]
     },
     "dmg": {
-      "background": "build/dmg-background.png",
       "icon": "src/icon.icns",
       "contents": [
         { "x": 130, "y": 220 },
@@ -59,12 +60,9 @@
     },
     "linux": {
       "icon": "src/icon.png",
+      "maintainer": "Anyelo120 <rottenbone.studio120@gmail.com>",
       "category": "Game",
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ]
+      "target": ["AppImage", "deb", "rpm"]
     },
     "deb": {
       "depends": ["libgtk-3-0"]
