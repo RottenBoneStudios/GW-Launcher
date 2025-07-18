@@ -38,7 +38,7 @@ ipcMain.on('open-editor', (_e, name) => {
     parent: mainWindow,
     modal: true,
     width: 500,
-    height: 620,
+    height: 780,
     show: false,
 	frame: false,
     autoHideMenuBar: true,
