@@ -24,17 +24,16 @@ jobs:
       - run: npm ci
 
       - name: 🔨 Build GW Launcher
+        shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            # En Linux usamos Docker para no instalar deps nativas
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
             docker run --rm -ti \
-              -v $PWD:/project \
+              -v "$GITHUB_WORKSPACE":/project \
               -v ~/.cache/electron:/root/.cache/electron \
               -v ~/.cache/electron-builder:/root/.cache/electron-builder \
               electronuserland/builder:wine \
               /bin/bash -lc "npm ci && npm run dist"
           else
-            # En Windows/macOS build nativo
             npm run dist
           fi
 
