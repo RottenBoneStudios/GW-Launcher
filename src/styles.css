@@ -10,7 +10,7 @@
 
 :root {
   --bg: #0b0c22;
-  --bg-card: #151738;
+  --bg-card: #15173850;
   --bg-sidebar: #0d0f2c;
   --fg: #e5e8ff;
   --primary: #9333ea;
@@ -26,6 +26,19 @@
   width: 100vw; height: 100vh;
   background: url('../assets/background.webp') center center / cover no-repeat;
   z-index: 0;
+}
+
+.background-editor{
+  position:fixed;
+  inset:0;
+  background:url("../assets/Fondo.webp") center/cover no-repeat;
+  z-index:-1;
+}
+
+.background-editor::after{
+  content:"";
+  position:absolute; inset:0;
+  background:rgba(0,0,0,.55);  /* opacidad aquí */
 }
 
 /* ---------- Layout principal ---------- */
@@ -47,12 +60,13 @@ body {
   --window-btn-margin: 0.25rem;
   
   position: relative;
-  z-index: 1;
-  width: 100vw;
-  height: 100vh;
+  z-index: 2;
+  width:calc(100vw - 2rem);
+  height:calc(100vh - 2rem);
   display: flex;
-  border-radius: 0;
-  background: rgba(0, 0, 0, 0.5);
+  margin:1rem;
+  border-radius:1rem;
+  overflow:hidden;   
   border: none;
   box-shadow: none;
   overflow: hidden;
@@ -337,3 +351,201 @@ body {
     height: 100vh;
   }
 }
+
+.overlay-images {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none; /* para que no intercepte clicks */
+  z-index: 1;           /* entre fondo (0) y .window (2) */
+}
+
+/* 3) Posición y tamaño de cada gatito */
+.overlay-images .cat-main {
+  position: absolute;
+  top: 50%;
+  left: 60%;
+  width: 400px;     /* ajusta a tu gusto */
+  transform: translate(-50%, -50%);
+}
+
+.overlay-images .cat-world {
+  position: absolute;
+  bottom: 20%;
+  left: 4%;
+  width: 200px;     /* ajusta a tu gusto */
+}
+
+/* ---------- Botones de la barra lateral con degradado ---------- */
+.sidebar__new,
+.sidebar__edit {
+  width: 100%;
+  padding: .75rem;
+  border: none;
+  border-radius: .75rem;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* Crear perfil: degradado morado→turquesa */
+.sidebar__new {
+  background: var(--launch-gradient);
+}
+.sidebar__new:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Editar perfil: estado deshabilitado con fondo morado oscuro semitransparente */
+.sidebar__edit {
+  background: rgba(147,51,234,0.5);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.sidebar__edit:not([disabled]) {
+  /* Si en algún momento no está disabled, tendrá el mismo estilo que "Crear perfil" */
+  background: var(--launch-gradient);
+  opacity: 1;
+  cursor: pointer;
+}
+.sidebar__edit:not([disabled]):hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Botón “Crear perfil” */
+/* Quita cualquier filtro y mantén siempre el mismo gradient */
+.sidebar__new:hover,
+.sidebar__new:focus,
+.sidebar__new:active {
+  background: var(--launch-gradient);
+  /* opcional: conserva la elevación al pasar el ratón */
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Botón “Editar perfil” cuando NO está disabled */
+.sidebar__edit:not([disabled]):hover,
+.sidebar__edit:not([disabled]):focus,
+.sidebar__edit:not([disabled]):active {
+  background: var(--launch-gradient);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Sidebar: limitar cada item a 20 caracteres y mostrar "..." si sobra */
+.sidebar__list li {
+  display: block;         /* para que text-overflow funcione */
+  max-width: 20ch;        /* ancho = 20 caracteres aproximados */
+  white-space: nowrap;    /* sin saltos de línea */
+  overflow: hidden;       /* oculta el desborde */
+  text-overflow: ellipsis;/* muestra "..." al final */
+}
+
+/* ── Deshabilitar selección de texto globalmente ── */
+* {
+  -webkit-user-select: none; /* Chrome/Safari */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* IE/Edge */
+  user-select: none;         /* estándar */
+}
+
+/* ── Editor buttons: siempre degradado, sin opacidad gris ── */
+.editor__buttons button,
+.editor__buttons button:disabled,
+.editor__buttons button:hover,
+.editor__buttons button:focus {
+  background: var(--launch-gradient) !important;
+  color: #fff;
+  cursor: pointer;
+  opacity: 1;
+  transform: none;
+  box-shadow: none;
+  transition: all 0.3s ease;
+}
+
+/* opcional: al pasar el cursor, levantar ligeramente */
+/* si no lo quieres, borra esta sección */
+.editor__buttons button:hover,
+.editor__buttons button:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Sidebar: lista de perfiles en modo bloque, scrollable y con wrapping */
+.sidebar__list {
+  list-style: none;
+  flex: 1 1 auto;        /* que ocupe todo el espacio sobrante */
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;      /* scroll sólo en vertical */
+}
+
+/* Cada perfil puede ocupar varias líneas en lugar de cortarse */
+.sidebar__list li {
+  display: block;         /* modo bloque normal */
+  padding: .5rem .75rem;
+  border-radius: .5rem;
+  cursor: pointer;
+  white-space: normal;    /* permitir salto de línea */
+  word-break: break-word; /* partir palabras largas si hace falta */
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 1) Aseguramos que la lista ocupe el espacio sobrante y sea scrollable */
+.sidebar__list {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;    /* que crezca/reduzca según el alto disponible */
+  overflow-y: auto !important;  /* scroll vertical */
+  overflow-x: hidden !important;/* nada de scroll horizontal */
+}
+
+/* 2) Cada ítem puede ocupar varias líneas y no se corta */
+.sidebar__list li {
+  display: block !important;           /* comportamiento normal de bloque */
+  white-space: normal !important;      /* permite saltos de línea */
+  word-break: break-word !important;   /* parte palabras demasiado largas */
+  overflow: visible !important;        /* nunca escondas el texto */
+  flex: 0 0 auto !important;           /* ni crece ni encoge dentro del flex */
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* Limitamos la lista de perfiles a mostrar sólo 8 ítems de alto */
+.sidebar__list {
+  /* Ajusta este valor si tus li son más altos o más bajos */
+  max-height: 350px !important;  
+  overflow-y: auto !important;    /* mantén el scroll vertical */
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* 1) Aseguramos que la sidebar sea un flex-column */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2) Hacemos que la lista ocupe todo el espacio disponible y tenga scroll interno */
+.sidebar__list {
+  flex: 1 1 auto;     /* que crezca/reduzca según el alto */
+  overflow-y: auto;   /* scroll sólo en vertical */
+  overflow-x: hidden;
+}
+
+/* 3) Anchura completa y margen auto-arriba en “Crear perfil” para que quede siempre abajo */
+.sidebar__new {
+  width: 100%;
+  margin-top: auto;  /* empuja “Crear perfil” y “Editar perfil” al fondo */
+}
+
+/* Si quieres un poquito de espacio extra entre los dos botones: */
+.sidebar__edit {
+  width: 100%;
+}
+
