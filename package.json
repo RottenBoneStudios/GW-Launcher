@@ -2,7 +2,6 @@
   "name": "gw-launcher",
   "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
-  "author": "Anyelo120 <rottenbone.studio120@gmail.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -17,9 +16,15 @@
     },
     "files": [
       "main.js",
+      "src/**/*",
       "preload.js",
-      "assets/**/*",
-      "src/**/*"
+      "assets/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "src/python",
+        "to": "python"
+      }
     ]
   },
   "devDependencies": {

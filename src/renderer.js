@@ -4,7 +4,7 @@ const path = require('path')
 const os = require('os')
 const fs = require('fs')
 
-const pythonScript = path.join(__dirname, '..', 'src', 'python', 'gwlauncher_backend.py')
+const pythonScript = getPythonScriptPath()
 const profilesFile = path.join(os.homedir(), '.gwlauncher', 'ui_profiles.json')
 const versionsDir = path.join(os.homedir(), '.gwlauncher', 'instances')
 
@@ -13,11 +13,31 @@ let profiles = {}
 
 function $(sel) { return document.querySelector(sel) }
 
+function getPythonScriptPath() {
+    const devPath = path.join('src', 'python', 'gwlauncher_backend.py')
+    const prodPath = path.join('python', 'gwlauncher_backend.py')
+
+    if (fs.existsSync(devPath)) {
+        return devPath
+    } else if (fs.existsSync(prodPath)) {
+        return prodPath
+    } else {
+        throw new Error('No se encontró el script Python en ninguna ruta esperada')
+    }
+}
+
 function execPython(args, inherit = false) {
     return new Promise((resolve, reject) => {
+        const isWin = process.platform === 'win32'
+
         const opts = inherit
-            ? { stdio: 'inherit' }
-            : { stdio: ['ignore', 'pipe', 'pipe'] }
+            ? { stdio: 'inherit', windowsHide: true }
+            : { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
+
+        if (isWin) {
+            opts.creationFlags = 0x08000000
+        }
+
         const py = spawn('python3', args, opts)
 
         py.on('error', reject)
@@ -29,98 +49,80 @@ function execPython(args, inherit = false) {
 }
 
 async function ensurePythonAndLibs() {
-    try {
-        await execPython(['--version'])
-    } catch {
-        await showModal({
-            title: 'Python 3 no encontrado',
-            html: `
+  try {
+    await execPython(['--version']);
+  } catch {
+    await showModal({
+      title: 'Python 3 no encontrado',
+      html: `
         No se encontró <strong>Python 3</strong> en tu sistema.<br>
         Descárgalo e instálalo desde  
         <a href="#" id="link-py">https://python.org</a>
       `,
-            buttons: [
-                { label: 'Visitar sitio', value: 'visit', className: '' },
-                { label: 'Cerrar', value: 'cancel', className: '' }
-            ]
-        }).then(choice => {
-            if (choice === 'visit') shell.openExternal('https://python.org')
-        })
-        return false
+      buttons: [
+        { label: 'Visitar sitio', value: 'visit' },
+        { label: 'Cerrar', value: 'cancel' }
+      ]
+    }).then(choice => choice === 'visit' && shell.openExternal('https://python.org'));
+    return false;
+  }
+
+  try {
+    await execPython(['-c', 'import minecraft_launcher_lib; import tkinter']);
+    return true;
+  } catch {
+    const platform = os.platform();
+    const pipArgs = platform === 'linux'
+      ? ['-m', 'pip3', 'install', '--user', 'minecraft_launcher_lib']
+      : ['-m', 'pip', 'install', 'minecraft_launcher_lib'];
+
+    try {
+      await execPython(pipArgs, true);
+    } catch {
+      await showModal({
+        title: 'Error al instalar minecraft_launcher_lib',
+        html: `
+          No se pudo instalar <strong>minecraft_launcher_lib</strong>.<br>
+          Ejecuta manualmente:<br>
+          <code>pip install minecraft_launcher_lib</code>
+        `,
+        buttons: [{ label: 'OK', value: null }]
+      });
+      return false;
+    }
+
+    if (platform === 'linux') {
+      try {
+        await execShell('sudo apt-get update');
+        await execShell('sudo apt-get install -y python3-tk');
+      } catch {
+        await showModal({
+          title: 'Error en apt-get',
+          html: `
+            No se pudo instalar <strong>python3-tk</strong>.<br>
+            Instálalo manualmente con:<br>
+            <code>sudo apt-get install python3-tk</code>
+          `,
+          buttons: [{ label: 'OK', value: null }]
+        });
+        return false;
+      }
     }
 
     try {
-        await execPython(['-c', 'import minecraft_launcher_lib; import tkinter'])
-        return true
+      await execPython(['-c', 'import minecraft_launcher_lib; import tkinter']);
+      return true;
     } catch {
-        await showModal({
-            title: 'Instalar librerías de Python',
-            html: `
-        Vamos a instalar las librerías necesarias:<br>
-        • <code>pip install minecraft_launcher_lib</code><br>
-        • <code>sudo apt-get install python3-tk</code> (Linux)<br>
-        <em>Si falla, instálalas manualmente o revisa tu instalación de Python.</em>
-      `,
-            buttons: [
-                { label: 'Proceder', value: true, className: '' },
-                { label: 'Cancelar', value: false, className: '' }
-            ]
-        }).then(async proceed => {
-            if (!proceed) return false
-
-            try {
-                const platform = os.platform()
-                const pipArgs = (platform === 'linux')
-                    ? ['-m', 'pip3', 'install', '--user', 'minecraft_launcher_lib']
-                    : ['-m', 'pip', 'install', 'minecraft_launcher_lib']
-                await execPython(pipArgs, true)
-            } catch {
-                await showModal({
-                    title: 'Error al instalar minecraft_launcher_lib',
-                    html: `
-            No se pudo instalar <strong>minecraft_launcher_lib</strong>.<br>
-            Ejecuta manualmente:<br>
-            <code>pip install minecraft_launcher_lib</code>
-          `,
-                    buttons: [{ label: 'OK', value: null }]
-                })
-                return false
-            }
-
-            if (os.platform() === 'linux') {
-                const ok = await showModal({
-                    title: 'Tkinter en Linux',
-                    html: `
-            Falta <strong>python3-tk</strong>.<br>
-            ¿Instalamos con apt? (requerirá tu contraseña)
-          `,
-                    buttons: [
-                        { label: 'Sí, instalar', value: true },
-                        { label: 'No, gracias', value: false }
-                    ]
-                })
-                if (!ok) return false
-
-                try {
-                    await execShell('sudo apt-get update')
-                    await execShell('sudo apt-get install -y python3-tk')
-                } catch {
-                    await showModal({
-                        title: 'Error en apt-get',
-                        html: `
-              No se pudo instalar <strong>python3-tk</strong>.<br>
-              Instálalo manualmente con:<br>
-              <code>sudo apt-get install python3-tk</code>
-            `,
-                        buttons: [{ label: 'OK', value: null }]
-                    })
-                    return false
-                }
-            }
-
-            return true
-        })
+      await showModal({
+        title: 'Error al cargar librerías',
+        html: `
+          No se pudieron cargar las librerías después de la instalación.
+        `,
+        buttons: [{ label: 'OK', value: null }]
+      });
+      return false;
     }
+  }
 }
 
 function showModal({ title, html, buttons }) {
@@ -265,10 +267,15 @@ async function launch() {
 
     args.push('--optimize')
 
-    const py = spawn('python3', [pythonScript, ...args], {
-        cwd: process.cwd(),
-        stdio: ['ignore', 'inherit', 'inherit']
-    })
+    const py = spawn(
+        process.platform === 'win32' ? 'pythonw' : 'python3',
+        [pythonScript, ...args],
+        {
+            cwd: process.cwd(),
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true
+        }
+    )
     py.on('error', err => console.error('Error al lanzar Python backend:', err))
 
     ipcRenderer.send('close-launcher')
