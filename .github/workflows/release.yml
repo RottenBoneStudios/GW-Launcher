@@ -1,41 +1,45 @@
 name: 📦 Build & Release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: 📥 Checkout
+        uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v3
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: '18'
           cache: 'npm'
 
-      - run: npm ci
+      - name: 📦 Install deps
+        run: npm ci
 
       - name: 🔨 Build GW Launcher
         run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            # En Linux usamos Docker para no instalar deps nativas
-            docker run --rm -ti \
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            # --- Sin -t para que no falle por falta de TTY ---
+            docker run --rm \
               -v $PWD:/project \
               -v ~/.cache/electron:/root/.cache/electron \
               -v ~/.cache/electron-builder:/root/.cache/electron-builder \
               electronuserland/builder:wine \
               /bin/bash -lc "npm ci && npm run dist"
           else
-            # En Windows/macOS build nativo
+            # Windows / macOS nativo
             npm run dist
           fi
 
