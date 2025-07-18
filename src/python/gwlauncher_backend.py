@@ -152,18 +152,26 @@ def save_profile(username: str, version: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def get_required_java_version(minecraft_version: str) -> int:
-    version_parts = [int(x) for x in minecraft_version.split(".") if x.isdigit()]
-    if not version_parts:
+    parts = minecraft_version.split(".")
+    version_nums = []
+    for p in parts:
+        try:
+            version_nums.append(int(p))
+        except ValueError:
+            break
+
+    if not version_nums:
         return 8
 
-    major, minor = version_parts[0], version_parts[1] if len(version_parts) > 1 else 0
+    major = version_nums[0]
+    minor = version_nums[1] if len(version_nums) > 1 else 0
 
     if major == 1:
-        if minor <= 12:
+        if 8 <= minor <= 12:
             return 8
-        elif minor <= 19:
+        elif 13 <= minor <= 19:
             return 17
-        else:
+        elif minor >= 20:
             return 21
     return 21
 
@@ -179,9 +187,9 @@ def download_java_runtime(java_version: int) -> Path:
 
     java_urls = {
         8: {
-            "Linux": "https://download1526.mediafire.com/s9v45nklqe7gml-OrsVbyyammR8oZ7AReMP2YkSFlbEmsqnOAyeQyamdJOx1xV1guy8Kpt9EJhIIXJweXNdK6859CQPyYp-eabomHIe5iG8C5dSMZpO2WE634y8ONx7SrMDzPcrd6h99uBeAFU8zDLunnHcOyNAtWOsCWDArEA/3wwy6tiuoyy1cz9/jdk-8u451-linux-x64.tar.gz",
-            "Darwin": "https://download938.mediafire.com/ws8s9n3aasvg49N82Z_41TBEWCg1Fzg1DM22zDecgo3v4XGf91bLklbIVRxBdkxlyW4Y2E2KKuHYNPdGK7ZD-qcdtE3vYPdrIWvYmgHVHae0Ru_Tj9GuNQPmmPDluqgsHwF14oJ4oox6u47SQIYK4pKvL-tCW81fxSE8b7SgWA/jyshtko9ugr4ng0/jdk-8u451-macosx-x64.tar.gz",
-            "Windows": "https://download856.mediafire.com/rpvmnbdxjrsgUIfNthinUvRztRP0qtER3fVrATgI25SzIXjpwm8rv-7hmnfBsX51Qqp6Exc0wDEm6nM8BORKn1cIMLb2J67yBtCn6ueBUKUCnNz0qyBstRiSYJ6z5utk7ijo0WzsYerYssWpUUqZm9uELIgUToxtqJo-UBPRXw/l739w5pvdy1n6jm/jdk-8u451-windows-x64.zip",
+            "Linux": "https://www.dropbox.com/scl/fi/a363ohfhydwwn1gfvgkhc/jdk-8u451-linux-x64.tar.gz?rlkey=rjf74dnl5sdg30bey86k8kndk&st=kzarvil0&dl=1",
+            "Darwin": "https://www.dropbox.com/scl/fi/mu9j2thwts7f79r1k7t5t/jdk-8u451-macosx-x64.tar.gz?rlkey=58sfz30osfea6avid0v6skgi9&st=nntyp855&dl=1",
+            "Windows": "https://www.dropbox.com/scl/fi/m14dal0l5k2d5x4anhuyf/jdk-8u451-windows-x64.zip?rlkey=2qshv0hq2a6i1e8s2te4mny5c&st=8zfqpd4p&dl=1",
         },
         17: {
             "Linux": "https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-x64_bin.tar.gz",

@@ -57,13 +57,13 @@ async function ensurePythonAndLibs() {
       html: `
         No se encontró <strong>Python 3</strong> en tu sistema.<br>
         Descárgalo e instálalo desde  
-        <a href="#" id="link-py">https://python.org</a>
+        <a href="#" id="link-py">apps.microsoft.com</a>
       `,
       buttons: [
         { label: 'Visitar sitio', value: 'visit' },
         { label: 'Cerrar', value: 'cancel' }
       ]
-    }).then(choice => choice === 'visit' && shell.openExternal('https://python.org'));
+    }).then(choice => choice === 'visit' && shell.openExternal('https://apps.microsoft.com/detail/9nrwmjp3717k?hl=en-US&gl=US'));
     return false;
   }
 
