@@ -2,27 +2,79 @@
   "name": "gw-launcher",
   "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
+  "author": "Tu Nombre <tu@email.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --x64 --ia32",
+    "dist:mac": "electron-builder --mac --x64 --arm64",
+    "dist:linux": "electron-builder --linux --x64 --arm64"
   },
   "build": {
     "appId": "com.rottenbonestudio.gwlauncher",
     "productName": "GW Launcher",
-    "win": {
-      "target": "nsis",
-      "icon": "src/icon.ico"
-    },
     "files": [
       "main.js",
       "preload.js",
       "assets/**/*",
       "src/**/*"
-    ]
+    ],
+    "win": {
+      "icon": "src/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64","ia32"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/icon.ico",
+      "uninstallerIcon": "src/icon.ico",
+      "license": "LICENSE.txt"
+    },
+    "mac": {
+      "icon": "src/icon.icns",
+      "category": "public.app-category.games",
+      "target": [
+        "dmg",
+        {
+          "target": "pkg",
+          "arch": ["x64","arm64"]
+        }
+      ]
+    },
+    "dmg": {
+      "background": "build/dmg-background.png",
+      "icon": "src/icon.icns",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "linux": {
+      "icon": "src/icon.png",
+      "category": "Game",
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ]
+    },
+    "deb": {
+      "depends": ["libgtk-3-0"]
+    },
+    "rpm": {
+      "depends": ["gtk3"]
+    }
   },
   "devDependencies": {
     "electron": "^37.2.3",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.13.3"
   }
 }

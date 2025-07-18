@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import threading
 import sys
 import uuid
+import requests
+import tarfile
+import zipfile
+import shutil
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -33,11 +36,7 @@ class _SplashLogo:
       if self._root:
           self._root.after(0, self._root.quit)
       self._thread.join()
-
-
-    # ------------------------------------------------------------------
-    #  Se ejecuta en el hilo-GUI: muestra la imagen y espera _stop
-    # ------------------------------------------------------------------
+      
     def _gui_thread(self, image_path: str) -> None:
       import tkinter as tk
       from pathlib import Path
@@ -99,11 +98,14 @@ _patch_downloader()
 GW_DIR: Path = Path.home() / ".gwlauncher"
 VERSIONS_DIR: Path = GW_DIR / "versions"
 INSTANCES_DIR: Path = GW_DIR / "instances"
+JAVA_DIR: Path = GW_DIR / "java"
 _PROFILES_FILE = GW_DIR / "profiles.json"
 
 def _ensure_dir() -> None:
-    for d in (GW_DIR, VERSIONS_DIR, INSTANCES_DIR):
+    for d in (GW_DIR, VERSIONS_DIR, INSTANCES_DIR, JAVA_DIR):
         d.mkdir(parents=True, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(d, 0o755)
 
 def _load_profiles() -> Dict[str, Any]:
     if not _PROFILES_FILE.exists():
@@ -115,11 +117,116 @@ def _load_profiles() -> Dict[str, Any]:
 
 def _save_profiles(profiles: Dict[str, Any]) -> None:
     _PROFILES_FILE.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+    if os.name == "posix":
+        os.chmod(_PROFILES_FILE, 0o644)
 
 def save_profile(username: str, version: str) -> None:
     profiles = _load_profiles()
     profiles[username] = {"last_version": version}
     _save_profiles(profiles)
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Gestión de versiones de Java
+# ──────────────────────────────────────────────────────────────────────────────
+def get_required_java_version(minecraft_version: str) -> int:
+    """Returns the required Java version for a given Minecraft version."""
+    version_parts = [int(x) for x in minecraft_version.split(".") if x.isdigit()]
+    if not version_parts:
+        return 8
+    
+    major, minor = version_parts[0], version_parts[1] if len(version_parts) > 1 else 0
+    
+    if major == 1:
+        if minor <= 12:
+            return 8
+        elif minor <= 19:
+            return 17
+        else:
+            return 21
+    return 21
+
+def download_java_runtime(java_version: int) -> Path:
+    """Download and extract the specified Java version to ~/.gwlauncher/java/<version>."""
+    _ensure_dir()
+    java_path = JAVA_DIR / str(java_version)
+    
+    if java_path.exists():
+        java_executable = java_path / "bin" / ("java.exe" if os.name == "nt" else "java")
+        if java_executable.exists():
+            return java_executable
+    
+    java_urls = {
+        8: {
+            "Linux": "https://download1526.mediafire.com/s9v45nklqe7gml-OrsVbyyammR8oZ7AReMP2YkSFlbEmsqnOAyeQyamdJOx1xV1guy8Kpt9EJhIIXJweXNdK6859CQPyYp-eabomHIe5iG8C5dSMZpO2WE634y8ONx7SrMDzPcrd6h99uBeAFU8zDLunnHcOyNAtWOsCWDArEA/3wwy6tiuoyy1cz9/jdk-8u451-linux-x64.tar.gz",
+            "Darwin": "https://download938.mediafire.com/ws8s9n3aasvg49N82Z_41TBEWCg1Fzg1DM22zDecgo3v4XGf91bLklbIVRxBdkxlyW4Y2E2KKuHYNPdGK7ZD-qcdtE3vYPdrIWvYmgHVHae0Ru_Tj9GuNQPmmPDluqgsHwF14oJ4oox6u47SQIYK4pKvL-tCW81fxSE8b7SgWA/jyshtko9ugr4ng0/jdk-8u451-macosx-x64.tar.gz",
+            "Windows": "https://download856.mediafire.com/rpvmnbdxjrsgUIfNthinUvRztRP0qtER3fVrATgI25SzIXjpwm8rv-7hmnfBsX51Qqp6Exc0wDEm6nM8BORKn1cIMLb2J67yBtCn6ueBUKUCnNz0qyBstRiSYJ6z5utk7ijo0WzsYerYssWpUUqZm9uELIgUToxtqJo-UBPRXw/l739w5pvdy1n6jm/jdk-8u451-windows-x64.zip"
+        },
+        17: {
+            "Linux": "https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-x64_bin.tar.gz",
+            "Darwin": "https://download.oracle.com/java/17/archive/jdk-17.0.12_macos-x64_bin.tar.gz",
+            "Windows": "https://download.oracle.com/java/17/archive/jdk-17.0.12_windows-x64_bin.zip"
+        },
+        21: {
+            "Linux": "https://download.oracle.com/java/21/latest/jdk-21_linux-x64_bin.tar.gz",
+            "Darwin": "https://download.oracle.com/java/21/latest/jdk-21_macos-x64_bin.tar.gz",
+            "Windows": "https://download.oracle.com/java/21/latest/jdk-21_windows-x64_bin.zip"
+        }
+    }
+    
+    os_map = {"Windows": "Windows", "Linux": "Linux", "Darwin": "Darwin"}
+    ext_map = {"Windows": "zip", "Linux": "tar.gz", "Darwin": "tar.gz"}
+    
+    system = "Windows" if os.name == "nt" else "Linux" if os.name == "posix" else "Darwin"
+    url = java_urls[java_version][system]
+    package_type = ext_map[system]
+    
+    try:
+        response = requests.get(url, stream=True, allow_redirects=True)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to download Java {java_version} for {system}: {e}")
+    
+    temp_file = JAVA_DIR / f"java_{java_version}.{package_type}"
+    with open(temp_file, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    
+    extract_path = JAVA_DIR / f"java_{java_version}_temp"
+    extract_path.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(extract_path, 0o755)
+    
+    try:
+        if package_type == "zip":
+            with zipfile.ZipFile(temp_file, "r") as z:
+                z.extractall(extract_path)
+        else:
+            with tarfile.open(temp_file, "r:gz") as t:
+                t.extractall(extract_path)
+        
+        extracted_dir = next(extract_path.iterdir(), None)
+        if not extracted_dir:
+            raise RuntimeError(f"No files extracted for Java {java_version}")
+        if os.name == "posix":
+            os.chmod(extracted_dir, 0o755)
+        shutil.move(str(extracted_dir), java_path)
+    finally:
+        temp_file.unlink(missing_ok=True)
+        shutil.rmtree(extract_path, ignore_errors=True)
+    
+    java_executable = java_path / "bin" / ("java.exe" if os.name == "nt" else "java")
+    if os.name != "nt":
+        os.chmod(java_path / "bin", 0o755)
+        os.chmod(java_executable, 0o755)
+    
+    try:
+        result = subprocess.run([str(java_executable), "-version"], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Invalid Java executable at {java_executable}: {result.stderr}")
+    except subprocess.SubprocessError as e:
+        raise RuntimeError(f"Failed to verify Java {java_version}: {e}")
+    
+    return java_executable
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Instalación
@@ -158,23 +265,15 @@ def install_modloader(loader: ModLoader, version: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 #  Construcción de comando
 # ──────────────────────────────────────────────────────────────────────────────
-def _offline_options(username: str) -> mll.types.MinecraftOptions:  # type: ignore[attr-defined]
+def _offline_options(username: str) -> mll.types.MinecraftOptions:
     u = uuid.uuid3(uuid.NAMESPACE_DNS, username)
     return {"username": username, "uuid": str(u).replace("-", ""), "token": "0"}
 
-def _detect_java_version() -> int:
-    try:
-        java = utils.get_java_executable()
-        out = subprocess.check_output([java, "-version"], stderr=subprocess.STDOUT, text=True)
-        m = re.search(r'"(\d+)', out)
-        if m:
-            return int(m.group(1))
-    except Exception:
-        pass
-    return 8
+def _detect_java_version(minecraft_version: str) -> int:
+    return get_required_java_version(minecraft_version)
 
 def _jvm_optimize_args(java_version: int | None = None) -> List[str]:
-    java_version = java_version or _detect_java_version()
+    java_version = java_version or 8
     base = [
         "-XX:+UnlockExperimentalVMOptions",
         "-XX:+DisableExplicitGC",
@@ -211,8 +310,13 @@ def build_command(
 ) -> List[str]:
     opts = _offline_options(username)
     opts["gameDirectory"] = str(game_dir)
+    if os.name == "posix":
+        os.chmod(game_dir, 0o755)
 
-    opt_flags = _jvm_optimize_args() if optimize else []
+    java_version = _detect_java_version(version_id)
+    java_executable = download_java_runtime(java_version)
+    
+    opt_flags = _jvm_optimize_args(java_version) if optimize else []
     opt_keys = {_extract_flag_key(f) for f in opt_flags}
 
     user_flags: List[str] = []
@@ -242,7 +346,10 @@ def build_command(
     if final_args:
         opts["jvmArguments"] = final_args
 
-    return mll.command.get_minecraft_command(version_id, str(GW_DIR), opts)
+    command = mll.command.get_minecraft_command(version_id, str(GW_DIR), opts)
+    command[0] = str(java_executable)
+
+    return command
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Flujo principal
@@ -263,6 +370,8 @@ def launch(
 
         game_dir = INSTANCES_DIR / real_id
         game_dir.mkdir(parents=True, exist_ok=True)
+        if os.name == "posix":
+            os.chmod(game_dir, 0o755)
         save_profile(username, version)
 
         cmd = build_command(

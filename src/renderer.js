@@ -13,6 +13,143 @@ let profiles = {}
 
 function $(sel) { return document.querySelector(sel) }
 
+function execPython(args, inherit = false) {
+    return new Promise((resolve, reject) => {
+        const opts = inherit
+            ? { stdio: 'inherit' }
+            : { stdio: ['ignore', 'pipe', 'pipe'] }
+        const py = spawn('python3', args, opts)
+
+        py.on('error', reject)
+        py.on('exit', code => {
+            if (code === 0) resolve()
+            else reject(new Error(`python3 salió con código ${code}`))
+        })
+    })
+}
+
+async function ensurePythonAndLibs() {
+    try {
+        await execPython(['--version'])
+    } catch {
+        await showModal({
+            title: 'Python 3 no encontrado',
+            html: `
+        No se encontró <strong>Python 3</strong> en tu sistema.<br>
+        Descárgalo e instálalo desde  
+        <a href="#" id="link-py">https://python.org</a>
+      `,
+            buttons: [
+                { label: 'Visitar sitio', value: 'visit', className: '' },
+                { label: 'Cerrar', value: 'cancel', className: '' }
+            ]
+        }).then(choice => {
+            if (choice === 'visit') shell.openExternal('https://python.org')
+        })
+        return false
+    }
+
+    try {
+        await execPython(['-c', 'import minecraft_launcher_lib; import tkinter'])
+        return true
+    } catch {
+        await showModal({
+            title: 'Instalar librerías de Python',
+            html: `
+        Vamos a instalar las librerías necesarias:<br>
+        • <code>pip install minecraft_launcher_lib</code><br>
+        • <code>sudo apt-get install python3-tk</code> (Linux)<br>
+        <em>Si falla, instálalas manualmente o revisa tu instalación de Python.</em>
+      `,
+            buttons: [
+                { label: 'Proceder', value: true, className: '' },
+                { label: 'Cancelar', value: false, className: '' }
+            ]
+        }).then(async proceed => {
+            if (!proceed) return false
+
+            try {
+                const platform = os.platform()
+                const pipArgs = (platform === 'linux')
+                    ? ['-m', 'pip3', 'install', '--user', 'minecraft_launcher_lib']
+                    : ['-m', 'pip', 'install', 'minecraft_launcher_lib']
+                await execPython(pipArgs, true)
+            } catch {
+                await showModal({
+                    title: 'Error al instalar minecraft_launcher_lib',
+                    html: `
+            No se pudo instalar <strong>minecraft_launcher_lib</strong>.<br>
+            Ejecuta manualmente:<br>
+            <code>pip install minecraft_launcher_lib</code>
+          `,
+                    buttons: [{ label: 'OK', value: null }]
+                })
+                return false
+            }
+
+            if (os.platform() === 'linux') {
+                const ok = await showModal({
+                    title: 'Tkinter en Linux',
+                    html: `
+            Falta <strong>python3-tk</strong>.<br>
+            ¿Instalamos con apt? (requerirá tu contraseña)
+          `,
+                    buttons: [
+                        { label: 'Sí, instalar', value: true },
+                        { label: 'No, gracias', value: false }
+                    ]
+                })
+                if (!ok) return false
+
+                try {
+                    await execShell('sudo apt-get update')
+                    await execShell('sudo apt-get install -y python3-tk')
+                } catch {
+                    await showModal({
+                        title: 'Error en apt-get',
+                        html: `
+              No se pudo instalar <strong>python3-tk</strong>.<br>
+              Instálalo manualmente con:<br>
+              <code>sudo apt-get install python3-tk</code>
+            `,
+                        buttons: [{ label: 'OK', value: null }]
+                    })
+                    return false
+                }
+            }
+
+            return true
+        })
+    }
+}
+
+function showModal({ title, html, buttons }) {
+    return new Promise(resolve => {
+        const overlay = document.getElementById('modal-overlay')
+        const box = document.getElementById('modal-box')
+        const t = document.getElementById('modal-title')
+        const c = document.getElementById('modal-content')
+        const bwrap = document.getElementById('modal-buttons')
+
+        t.textContent = title
+        c.innerHTML = html
+        bwrap.innerHTML = ''
+
+        buttons.forEach(btn => {
+            const b = document.createElement('button')
+            b.textContent = btn.label
+            b.className = 'modal-btn ' + (btn.className || '')
+            b.onclick = () => {
+                overlay.classList.add('hidden')
+                resolve(btn.value)
+            }
+            bwrap.appendChild(b)
+        })
+
+        overlay.classList.remove('hidden')
+    })
+}
+
 function loadProfiles() {
     try {
         return JSON.parse(fs.readFileSync(profilesFile, 'utf8'))
@@ -111,10 +248,13 @@ function renderParticles() {
     }
 }
 
-function launch() {
+async function launch() {
     if (!active) return
     const p = profiles[active]
     if (!p) return
+
+    const ok = await ensurePythonAndLibs()
+    if (!ok) return
 
     const args = ['launch', p.version, p.username]
     if (p.ram) args.push('--ram', p.ram)
