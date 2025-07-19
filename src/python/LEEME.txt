@@ -1,4 +1,4 @@
 python -m venv gwlauncher_env
 gwlauncher_env\Scripts\activate
 pip install pyinstaller minecraft-launcher-lib requests
-python -m PyInstaller --onefile --windowed --add-data "logo.png;." gwlauncher_backend.py
+python -m PyInstaller --onefile --windowed --add-data "logo.png;." --version-file=file_version_info.txt --name "gwlauncher_backend" gwlauncher_backend.py
