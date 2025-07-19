@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Minecraft No-Premium and Premium Launcher",
   "main": "main.js",
+  "author": "RottenBone Studio",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder"
@@ -10,9 +11,20 @@
   "build": {
     "appId": "com.rottenbonestudio.gwlauncher",
     "productName": "GW Launcher",
+    "copyright": "© 2025 RottenBone Studio",
+    "asar": true,
     "win": {
       "target": "nsis",
-      "icon": "src/icon.ico"
+      "icon": "src/icon.ico",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GW Launcher"
     },
     "files": [
       "main.js",
