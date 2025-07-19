@@ -1,0 +1,4 @@
+python -m venv venv
+venv\Scripts\activate
+pip install requests winshell pywin32
+pyinstaller --noconsole --onefile --name "GWLauncherInstaller" --icon=icon.ico installer.py
