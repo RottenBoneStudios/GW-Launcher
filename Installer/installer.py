@@ -35,10 +35,8 @@ def download_file(url, output_path, status_var):
 
 def select_folder():
     folder = filedialog.askdirectory(title="Seleccione carpeta donde guardar y descomprimir el archivo")
-
     if not folder:
         return None
-
     try:
         test_file = os.path.join(folder, "test_write_perms.tmp")
         with open(test_file, 'w') as f:
@@ -92,6 +90,9 @@ def iniciar_descarga_thread():
     if not carpeta_destino.get():
         messagebox.showerror("Error", "Debes seleccionar una carpeta antes de instalar.")
         return
+    if not check_var.get():
+        messagebox.showerror("Error", "Debes confirmar que entiendes los riesgos antes de continuar.")
+        return
 
     ubicacion_frame.pack_forget()
     progreso_frame.pack(expand=True)
@@ -117,10 +118,9 @@ def simular_progreso():
         ventana.update_idletasks()
         time.sleep(0.05)
 
-
 ventana = tk.Tk()
 ventana.title("Instalador GW Launcher")
-ventana.geometry("600x350")
+ventana.geometry("600x380")
 ventana.resizable(False, False)
 
 bienvenida_frame = tk.Frame(ventana)
@@ -129,16 +129,33 @@ bienvenida_frame.pack(expand=True)
 mensaje_bienvenida = Label(
     bienvenida_frame,
     text=("Bienvenido al instalador de GW Launcher.\n\n"
-          "Este launcher fue creado por la comunidad de GW y no somos una empresa,\n"
-          "por lo que la firma del programa no existe.\n"
-          "Por favor, ignora cualquier alerta sobre programa no firmado por autor desconocido.\n"
-          "Si en el futuro logramos obtener una licencia, esta advertencia será eliminada."),
+          "Este launcher no tiene firma digital, \nlo que genera avisos de autor desconocido la primera vez \nque lo instales.\n\n"
+          "Confirma que entiendes esto antes de continuar."),
     justify="center",
     font=("Arial", 12)
 )
-mensaje_bienvenida.pack(padx=20, pady=20)
+mensaje_bienvenida.pack(padx=20, pady=10)
 
-boton_siguiente = ttk.Button(bienvenida_frame, text="Siguiente", command=iniciar_instalacion)
+check_var = tk.BooleanVar()
+
+
+def actualizar_boton_siguiente():
+    if check_var.get():
+        boton_siguiente.config(state="normal")
+    else:
+        boton_siguiente.config(state="disabled")
+
+
+check_confirmacion = tk.Checkbutton(
+    bienvenida_frame,
+    text="Entiendo",
+    variable=check_var,
+    command=actualizar_boton_siguiente,
+    font=("Arial", 11)
+)
+check_confirmacion.pack(pady=5)
+
+boton_siguiente = ttk.Button(bienvenida_frame, text="Siguiente", command=iniciar_instalacion, state="disabled")
 boton_siguiente.pack(pady=10)
 
 ubicacion_frame = tk.Frame(ventana)
