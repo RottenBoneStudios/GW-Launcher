@@ -4,6 +4,8 @@ const path = require('path')
 const fs = require('fs')
 const os = require('os')
 
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+
 let mainWindow
 
 function createWindow() {
@@ -12,19 +14,20 @@ function createWindow() {
     height: 680,
     resizable: false,
     show: false,
-	frame: false,
+    frame: false,
     autoHideMenuBar: true,
-	transparent: true,
     backgroundColor: '#151738',
+    transparent: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
       contextIsolation: false
     }
   })
+
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'))
 
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.show()
   })
 }
@@ -40,10 +43,10 @@ ipcMain.on('open-editor', (_e, name) => {
     width: 500,
     height: 780,
     show: false,
-	frame: false,
+    frame: false,
     autoHideMenuBar: true,
-	transparent: true,
     backgroundColor: '#151738',
+    transparent: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -54,8 +57,7 @@ ipcMain.on('open-editor', (_e, name) => {
     path.join(__dirname, 'src', 'editor', 'profile-editor.html'),
     { query: name ? { name } : {} }
   )
-
-  editor.once('ready-to-show', () => {
+  editor.webContents.on('did-finish-load', () => {
     editor.show()
   })
 })

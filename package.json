@@ -22,8 +22,8 @@
     ],
     "extraFiles": [
       {
-        "from": "src/python",
-        "to": "python"
+        "from": "src/python/dist/gwlauncher_backend.exe",
+        "to": "gwlauncher_backend.exe"
       }
     ]
   },

@@ -11,6 +11,9 @@ import requests
 import tarfile
 import zipfile
 import shutil
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import ttk, messagebox
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -81,6 +84,11 @@ class _SplashLogo:
         root.mainloop()
         root.destroy()
 
+def _show_error(title: str, msg: str) -> None:
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror(title, msg)
+    root.destroy()
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Parches de rendimiento
@@ -167,9 +175,9 @@ def get_required_java_version(minecraft_version: str) -> int:
     minor = version_nums[1] if len(version_nums) > 1 else 0
 
     if major == 1:
-        if 8 <= minor <= 12:
+        if 8 <= minor <= 16:
             return 8
-        elif 13 <= minor <= 19:
+        elif 17 <= minor <= 19:
             return 17
         elif minor >= 20:
             return 21
@@ -181,9 +189,18 @@ def download_java_runtime(java_version: int) -> Path:
     java_path = JAVA_DIR / str(java_version)
 
     if java_path.exists():
-        java_executable = java_path / "bin" / ("java.exe" if os.name == "nt" else "java")
-        if java_executable.exists():
-            return java_executable
+        bin_dir = java_path / "bin"
+        if os.name == "nt":
+            javaw = bin_dir / "javaw.exe"
+            javaexe = bin_dir / "java.exe"
+            if javaw.exists():
+                return javaw
+            if javaexe.exists():
+                return javaexe
+        else:
+            javaexe = bin_dir / "java"
+            if javaexe.exists():
+                return javaexe
 
     java_urls = {
         8: {
@@ -205,52 +222,39 @@ def download_java_runtime(java_version: int) -> Path:
 
     ext_map = {"Windows": "zip", "Linux": "tar.gz", "Darwin": "tar.gz"}
     system = "Windows" if os.name == "nt" else "Linux" if os.name == "posix" else "Darwin"
-
     url = java_urls[java_version][system]
     package_type = ext_map[system]
 
-    try:
-        response = requests.get(url, stream=True, allow_redirects=True, timeout=60)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise RuntimeError(f"No se pudo descargar Java {java_version} para {system}: {exc}")
-
+    response = requests.get(url, stream=True, allow_redirects=True, timeout=60)
+    response.raise_for_status()
     temp_file = JAVA_DIR / f"java_{java_version}.{package_type}"
     with open(temp_file, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
-
     extract_path = JAVA_DIR / f"java_{java_version}_temp"
     extract_path.mkdir(parents=True, exist_ok=True)
-    if os.name == "posix":
-        os.chmod(extract_path, 0o755)
+    if package_type == "zip":
+        with zipfile.ZipFile(temp_file, "r") as zf:
+            zf.extractall(extract_path)
+    else:
+        with tarfile.open(temp_file, "r:gz") as tf:
+            tf.extractall(extract_path)
+    extracted_dir = next(extract_path.iterdir(), None)
+    if not extracted_dir:
+        raise RuntimeError(f"No se extrajeron archivos para Java {java_version}")
+    shutil.move(str(extracted_dir), java_path)
+    temp_file.unlink(missing_ok=True)
+    shutil.rmtree(extract_path, ignore_errors=True)
 
-    try:
-        if package_type == "zip":
-            with zipfile.ZipFile(temp_file, "r") as zf:
-                zf.extractall(extract_path)
-        else:
-            with tarfile.open(temp_file, "r:gz") as tf:
-                tf.extractall(extract_path)
-
-        extracted_dir = next(extract_path.iterdir(), None)
-        if not extracted_dir:
-            raise RuntimeError(f"No se extrajeron archivos para Java {java_version}")
-
-        if os.name == "posix":
-            os.chmod(extracted_dir, 0o755)
-        shutil.move(str(extracted_dir), java_path)
-    finally:
-        temp_file.unlink(missing_ok=True)
-        shutil.rmtree(extract_path, ignore_errors=True)
-
-    java_executable = java_path / "bin" / ("java.exe" if os.name == "nt" else "java")
-    if os.name != "nt":
-        os.chmod(java_path / "bin", 0o755)
-        os.chmod(java_executable, 0o755)
-
-    return java_executable
-
+    bin_dir = java_path / "bin"
+    if os.name == "nt":
+        javaw = bin_dir / "javaw.exe"
+        javaexe = bin_dir / "java.exe"
+        return javaw if javaw.exists() else javaexe
+    else:
+        javaexe = bin_dir / "java"
+        os.chmod(javaexe, 0o755)
+        return javaexe
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Instalación
@@ -265,30 +269,61 @@ def _installed_ids() -> List[str]:
 
 def install_version(version: str) -> None:
     _ensure_dir()
-    if version in _installed_ids():
+    installed = _installed_ids()
+    print(f"[DEBUG] Instalados (vanilla): {installed}")
+    if version in installed:
+        print(f"[DEBUG] Versión vanilla '{version}' ya instalada")
         return
-    mll.install.install_minecraft_version(version, str(GW_DIR))
-
+    try:
+        print(f"[DEBUG] Instalando vanilla {version!r}...")
+        mll.install.install_minecraft_version(version, str(GW_DIR))
+    except Exception as e:
+        print(f"[ERROR] Falló instalación vanilla {version!r}: {e}")
+        _show_error("Error Vanilla", f"No se pudo instalar la versión vanilla {version}:\n{e}")
+        raise
 
 def install_modloader(loader: ModLoader, version: str) -> str:
     _ensure_dir()
 
     if loader == "forge":
+        print(f"[DEBUG] Intentando Forge para {version!r}")
         fv = mll.forge.find_forge_version(version)
+        print(f"[DEBUG] find_forge_version {fv!r}")
         if not fv or not mll.forge.supports_automatic_install(fv):
+            msg = f"No existe instalador automático de Forge para la versión {version}"
+            print(f"[WARN] {msg}")
+            _show_error("Forge No Encontrado", msg)
             return version
         mid = mll.forge.forge_to_installed_version(fv)
+        print(f"[DEBUG] Forge build seleccionado: {mid!r}")
         if mid not in _installed_ids():
-            mll.forge.install_forge_version(fv, str(GW_DIR))
+            try:
+                print(f"[DEBUG] Instalando Forge {fv!r} para {version!r}...")
+                mll.forge.install_forge_version(fv, str(GW_DIR))
+            except Exception as e:
+                print(f"[ERROR] Falló instalación de Forge {fv!r}: {e}")
+                _show_error("Error Forge", f"No se pudo instalar Forge {fv}:\n{e}")
+                return version
         return mid
 
     if loader == "fabric":
-        mll.fabric.install_fabric(version, str(GW_DIR))
+        print(f"[DEBUG] Intentando Fabric para {version!r}")
+        try:
+            mll.fabric.install_fabric(version, str(GW_DIR))
+        except Exception as e:
+            msg = f"No se pudo instalar Fabric para la versión {version}: {e}"
+            print(f"[ERROR] {msg}")
+            _show_error("Error Fabric", msg)
+            return version
         facs = [vid for vid in _installed_ids() if version in vid and "fabric" in vid.lower()]
-        return facs[-1] if facs else version
-
+        print(f"[DEBUG] Builds Fabric instalados tras instalación: {facs}")
+        chosen = facs[-1] if facs else version
+        if chosen == version:
+            msg = f"No se encontró build Fabric para {version}"
+            print(f"[WARN] {msg}")
+            _show_error("Fabric No Encontrado", msg)
+        return chosen
     return version
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Construcción de comando
@@ -349,32 +384,41 @@ def build_command(
 
     java_version = _detect_java_version(version_id)
     java_executable = download_java_runtime(java_version)
+    print(f"[DEBUG] Usando Java {java_version} en {java_executable}")
 
-    opt_flags = _jvm_optimize_args(java_version) if optimize else []
-    opt_keys = {_extract_flag_key(f) for f in opt_flags}
+    parts = version_id.split('.')
+    use_opt = optimize
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] in ('14','15'):
+        print(f"[WARN] Desactivando optimize para versión {version_id} (incompatible con Java 8)")
+        use_opt = False
+
+    opt_flags = _jvm_optimize_args(java_version) if use_opt else []
+    print(f"[DEBUG] JVM Optimize Flags: {opt_flags}")
+    opt_keys = { _extract_flag_key(f) for f in opt_flags }
 
     user_flags: List[str] = []
     if jvm_args:
         for f in jvm_args:
-            if _extract_flag_key(f) in opt_keys:
+            key = _extract_flag_key(f)
+            if key in opt_keys:
+                print(f"[DEBUG] Omitiendo flag duplicada del usuario: {f}")
                 continue
             user_flags.append(f)
+    print(f"[DEBUG] JVM User Flags:     {user_flags}")
 
-    gc_in_opt = next((f for f in opt_flags if _is_gc_flag(f)), None)
-    if gc_in_opt:
-        user_flags = [f for f in user_flags if not _is_gc_flag(f)]
-    else:
-        first_gc_seen = False
-        filtered: List[str] = []
+    if not use_opt and user_flags:
+        seen_gc = False
+        filtered = []
         for f in user_flags:
             if _is_gc_flag(f):
-                if first_gc_seen:
+                if seen_gc:
+                    print(f"[DEBUG] Eliminando GC flag extra: {f}")
                     continue
-                first_gc_seen = True
+                seen_gc = True
             filtered.append(f)
         user_flags = filtered
 
-    final_args = [*opt_flags, *user_flags]
+    final_args = opt_flags + user_flags
     if ram is not None:
         final_args.append(f"-Xmx{ram}M")
     if final_args:
@@ -383,6 +427,7 @@ def build_command(
     command = mll.command.get_minecraft_command(version_id, str(GW_DIR), opts)
     command[0] = str(java_executable)
 
+    print(f"[DEBUG] Comando final: {command}")
     return command
 
 
@@ -404,6 +449,8 @@ def launch(
         install_version(version)
         real_id = install_modloader(loader, version)
 
+        _wait_for_version(real_id)
+
         game_dir = INSTANCES_DIR / real_id
         game_dir.mkdir(parents=True, exist_ok=True)
         if os.name == "posix":
@@ -422,11 +469,32 @@ def launch(
         splash.close()
     launch_detached(cmd, str(GW_DIR))
 
+def _wait_for_version(version_id: str) -> None:
+    version_path = VERSIONS_DIR / version_id
+    expected_jar = version_path / f"{version_id}.jar"
+
+    root = tk.Tk()
+    root.title("Descargando Minecraft")
+    root.resizable(False, False)
+    tk.Label(root, text=f"Descargando versión {version_id}, por favor espera…").pack(padx=20, pady=(10, 0))
+    pb = ttk.Progressbar(root, mode="indeterminate", length=300)
+    pb.pack(padx=20, pady=10)
+    pb.start(50)
+
+    def check():
+        if expected_jar.exists():
+            pb.stop()
+            root.destroy()
+        else:
+            root.after(500, check)
+
+    root.after(500, check)
+    root.mainloop()
 
 def launch_detached(cmd: list[str], cwd: str) -> None:
     if os.name == "nt":
-        DETACHED = 0x00000008 | 0x00000008
-        subprocess.Popen(cmd, cwd=cwd, creationflags=DETACHED)
+        flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+        subprocess.Popen(cmd, cwd=cwd, creationflags=flags)
     else:
         subprocess.Popen(cmd, cwd=cwd, start_new_session=True)
 

@@ -1,4 +1,4 @@
-const { spawn } = require('child_process')
+const { spawn , exec } = require('child_process')
 const { ipcRenderer, shell } = require('electron')
 const path = require('path')
 const os = require('os')
@@ -13,39 +13,43 @@ let profiles = {}
 
 function $(sel) { return document.querySelector(sel) }
 
-function getPythonScriptPath() {
-    const devPath = path.join('src', 'python', 'gwlauncher_backend.py')
-    const prodPath = path.join('python', 'gwlauncher_backend.py')
 
-    if (fs.existsSync(devPath)) {
-        return devPath
-    } else if (fs.existsSync(prodPath)) {
-        return prodPath
-    } else {
-        throw new Error('No se encontró el script Python en ninguna ruta esperada')
-    }
+function getPythonScriptPath() {
+  const devPath = path.resolve('src', 'python', 'dist', 'gwlauncher_backend.exe')
+  const prodPath = path.resolve('gwlauncher_backend.exe')
+
+  let chosen
+  if (fs.existsSync(devPath)) {
+    chosen = devPath
+  } else if (fs.existsSync(prodPath)) {
+    chosen = prodPath
+  } else {
+    console.error('[getPythonScriptPath] NO ENCONTRADO:', devPath, prodPath)
+    throw new Error('No se encontró el ejecutable Python en ninguna ruta esperada')
+  }
+  return chosen
 }
 
 function execPython(args, inherit = false) {
-    return new Promise((resolve, reject) => {
-        const isWin = process.platform === 'win32'
+  return new Promise((resolve, reject) => {
+    const isWin = process.platform === 'win32'
 
-        const opts = inherit
-            ? { stdio: 'inherit', windowsHide: true }
-            : { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
+    const opts = inherit
+      ? { stdio: 'inherit', windowsHide: true }
+      : { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
 
-        if (isWin) {
-            opts.creationFlags = 0x08000000
-        }
+    if (isWin) {
+      opts.creationFlags = 0x08000000
+    }
 
-        const py = spawn('python3', args, opts)
+    const py = spawn('python3', args, opts)
 
-        py.on('error', reject)
-        py.on('exit', code => {
-            if (code === 0) resolve()
-            else reject(new Error(`python3 salió con código ${code}`))
-        })
+    py.on('error', reject)
+    py.on('exit', code => {
+      if (code === 0) resolve()
+      else reject(new Error(`python3 salió con código ${code}`))
     })
+  })
 }
 
 async function ensurePythonAndLibs() {
@@ -126,181 +130,201 @@ async function ensurePythonAndLibs() {
 }
 
 function showModal({ title, html, buttons }) {
-    return new Promise(resolve => {
-        const overlay = document.getElementById('modal-overlay')
-        const box = document.getElementById('modal-box')
-        const t = document.getElementById('modal-title')
-        const c = document.getElementById('modal-content')
-        const bwrap = document.getElementById('modal-buttons')
+  return new Promise(resolve => {
+    const overlay = document.getElementById('modal-overlay')
+    const box = document.getElementById('modal-box')
+    const t = document.getElementById('modal-title')
+    const c = document.getElementById('modal-content')
+    const bwrap = document.getElementById('modal-buttons')
 
-        t.textContent = title
-        c.innerHTML = html
-        bwrap.innerHTML = ''
+    t.textContent = title
+    c.innerHTML = html
+    bwrap.innerHTML = ''
 
-        buttons.forEach(btn => {
-            const b = document.createElement('button')
-            b.textContent = btn.label
-            b.className = 'modal-btn ' + (btn.className || '')
-            b.onclick = () => {
-                overlay.classList.add('hidden')
-                resolve(btn.value)
-            }
-            bwrap.appendChild(b)
-        })
-
-        overlay.classList.remove('hidden')
+    buttons.forEach(btn => {
+      const b = document.createElement('button')
+      b.textContent = btn.label
+      b.className = 'modal-btn ' + (btn.className || '')
+      b.onclick = () => {
+        overlay.classList.add('hidden')
+        resolve(btn.value)
+      }
+      bwrap.appendChild(b)
     })
+
+    overlay.classList.remove('hidden')
+  })
 }
 
 function loadProfiles() {
-    try {
-        return JSON.parse(fs.readFileSync(profilesFile, 'utf8'))
-    } catch {
-        return {}
-    }
+  try {
+    return JSON.parse(fs.readFileSync(profilesFile, 'utf8'))
+  } catch {
+    return {}
+  }
 }
 
 function renderProfileList() {
-    const ul = $('#profile-list')
-    ul.innerHTML = ''
+  const ul = $('#profile-list')
+  ul.innerHTML = ''
 
-    for (const [name, data] of Object.entries(profiles)) {
-        const li = document.createElement('li')
-        li.dataset.name = name
-        li.onclick = () => {
-            active = name
-            renderProfileList()
-        }
-        if (name === active) li.classList.add('active')
-
-        const folder = document.createElement('img')
-        folder.src = '../assets/folder.webp'
-        folder.classList.add('folder-btn')
-        folder.onclick = e => {
-            e.stopPropagation()
-            if (fs.existsSync(versionsDir)) shell.openPath(versionsDir)
-            else alert('Aún no se ha iniciado ninguna versión de Minecraft')
-        }
-        li.append(folder)
-
-        const span = document.createElement('span')
-        span.textContent = name
-        li.append(span)
-
-        const del = document.createElement('img')
-        del.src = '../assets/trash.webp'
-        del.classList.add('delete-btn')
-        del.onclick = e => {
-            e.stopPropagation()
-            ipcRenderer.send('open-delete-confirm', name)
-        }
-        li.append(del)
-
-        ul.append(li)
+  for (const [name, data] of Object.entries(profiles)) {
+    const li = document.createElement('li')
+    li.dataset.name = name
+    li.onclick = () => {
+      active = name
+      renderProfileList()
     }
+    if (name === active) li.classList.add('active')
 
-    $('#btn-edit-profile').disabled = !active
-    $('#btn-launch').disabled = !active
-    $('#profile-headline').textContent =
-        active ? `Perfil: ${active}` : 'Selecciona un perfil'
+    const folder = document.createElement('img')
+    folder.src = '../assets/folder.webp'
+    folder.classList.add('folder-btn')
+    folder.onclick = e => {
+      e.stopPropagation()
+      if (fs.existsSync(versionsDir)) shell.openPath(versionsDir)
+      else alert('Aún no se ha iniciado ninguna versión de Minecraft')
+    }
+    li.append(folder)
+
+    const span = document.createElement('span')
+    span.textContent = name
+    li.append(span)
+
+    const del = document.createElement('img')
+    del.src = '../assets/trash.webp'
+    del.classList.add('delete-btn')
+    del.onclick = e => {
+      e.stopPropagation()
+      ipcRenderer.send('open-delete-confirm', name)
+    }
+    li.append(del)
+
+    ul.append(li)
+  }
+
+  $('#btn-edit-profile').disabled = !active
+  $('#btn-launch').disabled = !active
+  $('#profile-headline').textContent =
+    active ? `Perfil: ${active}` : 'Selecciona un perfil'
 }
 
 function getParticleImage() {
-    const date = new Date()
-    const month = date.getMonth() + 1
-    const day = date.getDate()
+  const date = new Date()
+  const month = date.getMonth() + 1
+  const day = date.getDate()
 
-    if ((month === 9 && day >= 21) || month === 10 || month === 11 || (month === 12 && day <= 20)) {
-        return '../assets/leaf.webp'
-    } else if ((month === 12 && day >= 21) || month === 1 || month === 2 || (month === 3 && day <= 20)) {
-        return '../assets/sunflower.webp'
-    } else if ((month === 3 && day >= 21) || month === 4 || month === 5 || (month === 6 && day <= 20)) {
-        return '../assets/leaf.webp'
-    } else {
-        return '../assets/snow.webp'
-    }
+  if ((month === 9 && day >= 21) || month === 10 || month === 11 || (month === 12 && day <= 20)) {
+    return '../assets/leaf.webp'
+  } else if ((month === 12 && day >= 21) || month === 1 || month === 2 || (month === 3 && day <= 20)) {
+    return '../assets/sunflower.webp'
+  } else if ((month === 3 && day >= 21) || month === 4 || month === 5 || (month === 6 && day <= 20)) {
+    return '../assets/leaf.webp'
+  } else {
+    return '../assets/snow.webp'
+  }
 }
 
 function renderParticles() {
-    const container = document.querySelector('.particle-container')
-    const particleCount = 15
-    const particleImage = getParticleImage()
+  const container = document.querySelector('.particle-container')
+  const particleCount = 15
+  const particleImage = getParticleImage()
 
-    const redLine = document.querySelector('.red-line')
-    const containerTop = container.getBoundingClientRect().top
-    const redY = redLine
-        ? redLine.getBoundingClientRect().top - containerTop
-        : 0
+  const redLine = document.querySelector('.red-line')
+  const containerTop = container.getBoundingClientRect().top
+  const redY = redLine
+    ? redLine.getBoundingClientRect().top - containerTop
+    : 0
 
-    for (let i = 0; i < particleCount; i++) {
-        const p = document.createElement('img')
-        p.src = particleImage
-        p.classList.add('particle')
-        p.style.left = `${Math.random() * 100}%`
-        p.style.top = `${redY}px`
-        p.style.animationDelay = `${Math.random() * 5}s`
-        p.style.animationDuration = `${8 + Math.random() * 4}s`
+  for (let i = 0; i < particleCount; i++) {
+    const p = document.createElement('img')
+    p.src = particleImage
+    p.classList.add('particle')
+    p.style.left = `${Math.random() * 100}%`
+    p.style.top = `${redY}px`
+    p.style.animationDelay = `${Math.random() * 5}s`
+    p.style.animationDuration = `${8 + Math.random() * 4}s`
 
-        const swayAmount = (Math.random() - 0.5) * 50
-        const rotateAmount = Math.random() * 360
-        p.style.setProperty('--sway', `${swayAmount}px`)
-        p.style.setProperty('--rotate', `${rotateAmount}deg`)
+    const swayAmount = (Math.random() - 0.5) * 50
+    const rotateAmount = Math.random() * 360
+    p.style.setProperty('--sway', `${swayAmount}px`)
+    p.style.setProperty('--rotate', `${rotateAmount}deg`)
 
-        container.appendChild(p)
-    }
+    container.appendChild(p)
+  }
 }
 
 async function launch() {
-    if (!active) return
-    const p = profiles[active]
-    if (!p) return
+  if (!active) return;
+  const p = profiles[active];
+  if (!p) return;
 
-    const ok = await ensurePythonAndLibs()
-    if (!ok) return
+  const isWin = process.platform === 'win32';
 
-    const args = ['launch', p.version, p.username]
-    if (p.ram) args.push('--ram', p.ram)
-    if (p.modloader && p.modloader !== 'vanilla')
-        args.push('--modloader', p.modloader)
-    for (const f of (p.jvmFlags || []))
-        args.push(`--jvm-arg=${f}`)
+  if (!isWin) {
+    const ok = await ensurePythonAndLibs();
+    if (!ok) return;
+  }
 
-    args.push('--optimize')
+  const args = ['launch', p.version, p.username];
+  if (p.ram) args.push('--ram', p.ram);
+  if (p.modloader && p.modloader !== 'vanilla')
+    args.push('--modloader', p.modloader);
+  for (const f of (p.jvmFlags || []))
+    args.push(`--jvm-arg=${f}`);
+  args.push('--optimize');
 
-    const py = spawn(
-        process.platform === 'win32' ? 'pythonw' : 'python3',
-        [pythonScript, ...args],
-        {
-            cwd: process.cwd(),
-            stdio: ['ignore', 'pipe', 'pipe'],
-            windowsHide: true
-        }
-    )
-    py.on('error', err => console.error('Error al lanzar Python backend:', err))
+  if (isWin) {
+    const exePath = pythonScript;
+    if (!fs.existsSync(exePath)) {
+      console.error('[launch] no encontré el .exe en:', exePath);
+      return;
+    }
 
-    ipcRenderer.send('close-launcher')
+    console.log('[launch][win] cwd:', path.dirname(exePath));
+    console.log('[launch][win] exe:', exePath, args.join(' '));
+
+    const child = spawn(exePath, args, {
+      cwd: path.dirname(exePath),
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+
+  } else {
+    console.log('[launch][nix] python3', pythonScript, args.join(' '));
+    const child = spawn('python3', [pythonScript, ...args], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+  }
+
+  ipcRenderer.send('close-launcher');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  profiles = loadProfiles()
+  renderProfileList()
+  renderParticles()
+
+  $('#btn-new-profile').onclick = () => ipcRenderer.send('open-editor', null)
+  $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
+  $('#btn-launch').onclick = launch
+
+  $('#minimize-btn').onclick = () => ipcRenderer.send('window-minimize');
+  $('#close-btn').onclick = () => ipcRenderer.send('close-launcher');
+
+  ipcRenderer.on('profile-saved', (_e, name) => {
     profiles = loadProfiles()
+    active = name
     renderProfileList()
-    renderParticles()
-
-    $('#btn-new-profile').onclick = () => ipcRenderer.send('open-editor', null)
-    $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
-    $('#btn-launch').onclick = launch
-
-    $('#minimize-btn').onclick = () => ipcRenderer.send('window-minimize');
-    $('#close-btn').onclick = () => ipcRenderer.send('close-launcher');
-
-    ipcRenderer.on('profile-saved', (_e, name) => {
-        profiles = loadProfiles()
-        active = name
-        renderProfileList()
-    })
-    ipcRenderer.on('profile-deleted', (_e, name) => {
-        profiles = loadProfiles()
-        if (active === name) active = null
-        renderProfileList()
-    })
+  })
+  ipcRenderer.on('profile-deleted', (_e, name) => {
+    profiles = loadProfiles()
+    if (active === name) active = null
+    renderProfileList()
+  })
 })
