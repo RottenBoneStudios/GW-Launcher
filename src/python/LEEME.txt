@@ -1,3 +1,5 @@
+=== COMANDOS PARA CREAR EL EXE DE BACKEND DEL LAUNCHER. ===
+
 python -m venv gwlauncher_env
 gwlauncher_env\Scripts\activate
 pip install pyinstaller minecraft-launcher-lib requests
