@@ -1,5 +1,3 @@
-=== COMANDOS PARA CREAR EL EXE DE INSTALADOR. ===
-
 python -m venv venv
 venv\Scripts\activate
 pip install requests winshell pywin32 pyinstaller

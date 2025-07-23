@@ -5,8 +5,8 @@ import tkinter as tk
 from tkinter import filedialog, Label, StringVar, ttk, messagebox
 import threading
 import time
-import winshell
-from win32com.client import Dispatch
+import winshell # type: ignore
+from win32com.client import Dispatch # type: ignore
 
 
 def download_file(url, output_path, status_var):
@@ -101,7 +101,7 @@ def iniciar_descarga_thread():
 
 
 def iniciar_descarga_real():
-    url = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0004/gwlauncher1.0.0v.zip"
+    url = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0005/gwlauncher1.0.1v.zip"
     zip_path = os.path.join(carpeta_destino.get(), os.path.basename(url))
 
     if download_file(url, zip_path, status_var):
