@@ -8,6 +8,7 @@ import time
 import winshell # type: ignore
 from win32com.client import Dispatch # type: ignore
 
+DOWNLOAD_URL = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0005/gwlauncher1.0.1v.zip"
 
 def download_file(url, output_path, status_var):
     status_var.set("Descargando...")
@@ -32,7 +33,6 @@ def download_file(url, output_path, status_var):
         status_var.set(f"Error descarga: {str(e)}")
         return False
 
-
 def select_folder():
     folder = filedialog.askdirectory(title="Seleccione carpeta donde guardar y descomprimir el archivo")
     if not folder:
@@ -45,7 +45,6 @@ def select_folder():
         return folder
     except:
         return None
-
 
 def extract_zip(zip_path, dest_folder, status_var):
     status_var.set("Descomprimiendo...")
@@ -67,12 +66,12 @@ def extract_zip(zip_path, dest_folder, status_var):
         status_var.set("Error en la descompresión")
         return False
 
-
-def crear_acceso_directo(carpeta):
+def crear_acceso_directo(carpeta: str, nombre_carpeta: str) -> None:
     desktop = winshell.desktop()
-    subfolder = os.path.join(carpeta, "gwlauncher1.0.0v")
+    subfolder = os.path.join(carpeta, nombre_carpeta)
     path = os.path.join(subfolder, "GW Launcher.exe")
     acceso = os.path.join(desktop, "GW Launcher.lnk")
+
     shell = Dispatch('WScript.Shell')
     shortcut = shell.CreateShortCut(acceso)
     shortcut.Targetpath = path
@@ -80,11 +79,9 @@ def crear_acceso_directo(carpeta):
     shortcut.IconLocation = path
     shortcut.save()
 
-
 def iniciar_instalacion():
     bienvenida_frame.pack_forget()
     ubicacion_frame.pack(expand=True)
-
 
 def iniciar_descarga_thread():
     if not carpeta_destino.get():
@@ -99,17 +96,15 @@ def iniciar_descarga_thread():
     threading.Thread(target=simular_progreso, daemon=True).start()
     threading.Thread(target=iniciar_descarga_real, daemon=True).start()
 
-
 def iniciar_descarga_real():
-    url = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0005/gwlauncher1.0.1v.zip"
-    zip_path = os.path.join(carpeta_destino.get(), os.path.basename(url))
+    zip_path = os.path.join(carpeta_destino.get(), os.path.basename(DOWNLOAD_URL))
+    nombre_carpeta = os.path.splitext(os.path.basename(DOWNLOAD_URL))[0]
 
-    if download_file(url, zip_path, status_var):
+    if download_file(DOWNLOAD_URL, zip_path, status_var):
         if extract_zip(zip_path, carpeta_destino.get(), status_var):
             os.remove(zip_path)
-            crear_acceso_directo(carpeta_destino.get())
+            crear_acceso_directo(carpeta_destino.get(), nombre_carpeta)
             status_var.set("Instalación completada exitosamente")
-
 
 def simular_progreso():
     progress_bar['value'] = 0
@@ -138,13 +133,11 @@ mensaje_bienvenida.pack(padx=20, pady=10)
 
 check_var = tk.BooleanVar()
 
-
 def actualizar_boton_siguiente():
     if check_var.get():
         boton_siguiente.config(state="normal")
     else:
         boton_siguiente.config(state="disabled")
-
 
 check_confirmacion = tk.Checkbutton(
     bienvenida_frame,
