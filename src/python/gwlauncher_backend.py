@@ -160,6 +160,9 @@ def save_profile(username: str, version: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def get_required_java_version(minecraft_version: str) -> int:
+    if "fabric" in minecraft_version.lower():
+        return 21
+
     parts = minecraft_version.split(".")
     version_nums = []
     for p in parts:
@@ -182,7 +185,6 @@ def get_required_java_version(minecraft_version: str) -> int:
         elif minor >= 20:
             return 21
     return 21
-
 
 def download_java_runtime(java_version: int) -> Path:
     _ensure_dir()
@@ -261,11 +263,52 @@ def download_java_runtime(java_version: int) -> Path:
 # ──────────────────────────────────────────────────────────────────────────────
 ModLoader = Literal["forge", "fabric", ""]
 
+def _dump_available_versions_json() -> None:
+    _ensure_dir()
+
+    def save_if_changed(data: Any, path: Path, label: str) -> None:
+        new_json = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+        if path.exists():
+            current = path.read_text(encoding="utf-8")
+            if current == new_json:
+                print(f"[OK] Sin cambios en {label}: {path}")
+                return
+        path.write_text(new_json, encoding="utf-8")
+        if os.name == "posix":
+            os.chmod(path, 0o644)
+        print(f"[OK] {label} actualizado: {path}")
+
+    # Vanilla
+    try:
+        all_versions = mll.utils.get_version_list()
+    except AttributeError:
+        all_versions = mll.utils.get_available_versions()
+    save_if_changed(all_versions, GW_DIR / "versiones-minecraft.json", "Vanilla")
+
+    # Forge
+    try:
+        forge_versions = mll.forge.list_forge_versions()
+        save_if_changed(forge_versions, GW_DIR / "versiones-forge.json", "Forge")
+    except Exception as e:
+        print(f"[WARN] No se pudo obtener Forge: {e}")
+
+    # Fabric
+    try:
+        fabric_versions = mll.fabric.get_all_minecraft_versions()
+        save_if_changed(fabric_versions, GW_DIR / "versiones-fabric.json", "Fabric")
+    except Exception as e:
+        print(f"[WARN] No se pudo obtener Fabric: {e}")
+
+    # Quilt (opcional)
+    try:
+        quilt_versions = mll.quilt.get_all_minecraft_versions()
+        save_if_changed(quilt_versions, GW_DIR / "versiones-quilt.json", "Quilt")
+    except Exception as e:
+        print(f"[INFO] Quilt no disponible o falló: {e}")
 
 def _installed_ids() -> List[str]:
     _ensure_dir()
     return [v["id"] for v in utils.get_installed_versions(str(GW_DIR))]
-
 
 def install_version(version: str) -> None:
     _ensure_dir()
@@ -337,28 +380,39 @@ def _offline_options(username: str) -> mll.types.MinecraftOptions:
 def _detect_java_version(minecraft_version: str) -> int:
     return get_required_java_version(minecraft_version)
 
-
 def _jvm_optimize_args(java_version: int | None = None) -> List[str]:
     java_version = java_version or 8
-    base = [
-        "-XX:+UnlockExperimentalVMOptions",
-        "-XX:+DisableExplicitGC",
-        "-XX:+AlwaysPreTouch",
-    ]
-    if java_version >= 17:
-        base += ["-XX:+UseZGC"]
-    else:
-        base += ["-XX:+UseG1GC", "-XX:+UseStringDeduplication"]
-        cpu = os.cpu_count() or 2
-        base += [
-            f"-XX:ParallelGCThreads={max(1, cpu - 1)}",
-            f"-XX:ConcGCThreads={max(1, cpu // 2)}",
-            "-XX:G1NewSizePercent=20",
+
+    if java_version == 8:
+        return [
+            "-XX:+UseG1GC",
+            "-XX:G1NewSizePercent=30",
+            "-XX:G1MaxNewSizePercent=40",
+            "-XX:G1HeapRegionSize=16M",
             "-XX:G1ReservePercent=20",
             "-XX:MaxGCPauseMillis=50",
+            "-XX:G1HeapWastePercent=5",
+            "-XX:G1MixedGCCountTarget=4",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:+PerfDisableSharedMem",
+            "-XX:+AlwaysPreTouch"
         ]
-    return base
-
+    elif java_version == 17:
+        return [
+            "-XX:+UseZGC",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:+DisableExplicitGC",
+            "-XX:+AlwaysPreTouch"
+        ]
+    elif java_version == 21:
+        return [
+            "--enable-preview",
+            "-XX:+UseZGC",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:+DisableExplicitGC",
+            "-XX:+AlwaysPreTouch"
+        ]
+    return []
 
 def _extract_flag_key(flag: str) -> str:
     return flag.split("=", 1)[0]
@@ -366,7 +420,6 @@ def _extract_flag_key(flag: str) -> str:
 
 def _is_gc_flag(flag: str) -> bool:
     return flag.startswith("-XX:+Use") and flag.endswith("GC")
-
 
 def build_command(
     version_id: str,
@@ -393,18 +446,28 @@ def build_command(
         use_opt = False
 
     opt_flags = _jvm_optimize_args(java_version) if use_opt else []
-    print(f"[DEBUG] JVM Optimize Flags: {opt_flags}")
-    opt_keys = { _extract_flag_key(f) for f in opt_flags }
+    user_flags: List[str] = jvm_args or []
 
-    user_flags: List[str] = []
-    if jvm_args:
-        for f in jvm_args:
-            key = _extract_flag_key(f)
-            if key in opt_keys:
-                print(f"[DEBUG] Omitiendo flag duplicada del usuario: {f}")
-                continue
-            user_flags.append(f)
-    print(f"[DEBUG] JVM User Flags:     {user_flags}")
+    if user_flags:
+        print(f"[INFO] Flags del jugador detectadas, omitiendo JVM optimize flags")
+        opt_flags = []
+
+    print(f"[DEBUG] JVM Optimize Flags: {opt_flags}")
+    print(f"[DEBUG] JVM User Flags (raw): {user_flags}")
+
+    opt_keys = {_extract_flag_key(f) for f in opt_flags}
+    filtered_user_flags: List[str] = []
+    seen_keys = set()
+    for f in user_flags:
+        key = _extract_flag_key(f)
+        if key in seen_keys or key in opt_keys:
+            print(f"[DEBUG] Ignorando flag duplicada: {f}")
+            continue
+        seen_keys.add(key)
+        filtered_user_flags.append(f)
+
+    user_flags = filtered_user_flags
+    print(f"[DEBUG] JVM User Flags (filtered): {user_flags}")
 
     if not use_opt and user_flags:
         seen_gc = False
@@ -429,7 +492,6 @@ def build_command(
 
     print(f"[DEBUG] Comando final: {command}")
     return command
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Flujo principal
@@ -543,6 +605,7 @@ def _main() -> None:
         )
 
     elif args.cmd == "versions":
+        _dump_available_versions_json()
         print("\n".join(sorted(_installed_ids())))
     else:
         sys.exit(1)
