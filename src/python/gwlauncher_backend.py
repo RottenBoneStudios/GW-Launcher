@@ -11,8 +11,9 @@ import requests
 import tarfile
 import zipfile
 import shutil
+import time
 import tkinter as tk
-from tkinter import messagebox
+from pypresence import Presence
 from tkinter import ttk, messagebox
 from functools import partial
 from pathlib import Path
@@ -20,6 +21,9 @@ from typing import Any, Dict, List, Literal, Optional
 
 import minecraft_launcher_lib as mll
 from minecraft_launcher_lib import utils
+
+DISCORD_CLIENT_ID = "1397615014478872727"
+_presence = None
 
 def _hide_console() -> None:
     if os.name == "nt":
@@ -33,13 +37,46 @@ def _hide_console() -> None:
             pass
 _hide_console()
 
+def start_presence(username: str, version: str):
+    def _run():
+        global _presence
+        try:
+            if not _presence:
+                _presence = Presence(DISCORD_CLIENT_ID)
+                _presence.connect()
+            _presence.update(
+                details=f"Jugando Minecraft {version}",
+                state=f"Servidor: play.gatitosworld.com | Usuario: {username}",
+                large_image="logo",
+                large_text="GWLauncher",
+                start=time.time()
+            )
+        except Exception as e:
+            print(f"[WARN] Discord RPC no conectado: {e}")
+    
+    if not _presence:
+        threading.Thread(target=_run, daemon=True).start()
+    else:
+        _run()
+
+def stop_presence():
+    global _presence
+    try:
+        if _presence:
+            _presence.clear()
+            _presence.close()
+    except Exception:
+        pass
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Splash: logo PNG centrado, inmóvil y siempre en primer plano
 # ──────────────────────────────────────────────────────────────────────────────
 class _SplashLogo:
+    __slots__ = ("_root_ready", "_root", "_thread")
+
     def __init__(self, image_path: str = "logo.png") -> None:
         self._root_ready = threading.Event()
-        self._root: "tk.Tk | None" = None  # type: ignore
+        self._root = None
 
         self._thread = threading.Thread(
             target=self._gui_thread, args=(image_path,), daemon=True
@@ -49,7 +86,7 @@ class _SplashLogo:
 
     def close(self) -> None:
         if self._root:
-            self._root.after(0, self._root.quit)
+            self._root.after(0, self._root.destroy)
         self._thread.join()
 
     def _gui_thread(self, image_path: str) -> None:
@@ -142,12 +179,17 @@ def _load_profiles() -> Dict[str, Any]:
     except json.JSONDecodeError:
         return {}
 
-
 def _save_profiles(profiles: Dict[str, Any]) -> None:
-    _PROFILES_FILE.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+    try:
+        current = json.loads(_PROFILES_FILE.read_text(encoding="utf-8")) if _PROFILES_FILE.exists() else {}
+        if profiles == current:
+            return
+    except Exception:
+        pass
+
+    _PROFILES_FILE.write_text(json.dumps(profiles, indent=2, ensure_ascii=False), encoding="utf-8")
     if os.name == "posix":
         os.chmod(_PROFILES_FILE, 0o644)
-
 
 def save_profile(username: str, version: str) -> None:
     profiles = _load_profiles()
@@ -179,7 +221,7 @@ def get_required_java_version(minecraft_version: str) -> int:
     minor = version_nums[1] if len(version_nums) > 1 else 0
 
     if major == 1:
-        if 8 <= minor <= 16:
+        if 0 <= minor <= 16:
             return 8
         elif 17 <= minor <= 19:
             return 17
@@ -405,22 +447,15 @@ def _jvm_optimize_args(java_version: int | None = None) -> List[str]:
     if java_version == 8:
         return [
             "-XX:+UseG1GC",
-            "-XX:G1NewSizePercent=30",
-            "-XX:G1MaxNewSizePercent=40",
-            "-XX:G1HeapRegionSize=16M",
-            "-XX:G1ReservePercent=20",
-            "-XX:MaxGCPauseMillis=50",
-            "-XX:G1HeapWastePercent=5",
-            "-XX:G1MixedGCCountTarget=4",
             "-XX:+UnlockExperimentalVMOptions",
             "-XX:+PerfDisableSharedMem",
-            "-XX:+AlwaysPreTouch"
+            "-XX:MaxGCPauseMillis=50",
+            "-XX:G1HeapRegionSize=16M"
         ]
     elif java_version == 17:
         return [
             "-XX:+UseZGC",
             "-XX:+UnlockExperimentalVMOptions",
-            "-XX:+DisableExplicitGC",
             "-XX:+AlwaysPreTouch"
         ]
     elif java_version == 21:
@@ -428,7 +463,6 @@ def _jvm_optimize_args(java_version: int | None = None) -> List[str]:
             "--enable-preview",
             "-XX:+UseZGC",
             "-XX:+UnlockExperimentalVMOptions",
-            "-XX:+DisableExplicitGC",
             "-XX:+AlwaysPreTouch"
         ]
     return []
@@ -548,11 +582,40 @@ def launch(
         )
     finally:
         splash.close()
-    launch_detached(cmd, str(GW_DIR))
+
+    start_presence(username, version)
+
+    try:
+        launch_and_wait(cmd, str(GW_DIR))
+    finally:
+        stop_presence()
+
+def launch_and_wait(cmd: list[str], cwd: str) -> None:
+    try:
+        if os.name == "nt":
+            flags = subprocess.CREATE_NO_WINDOW
+            proc = subprocess.Popen(cmd, cwd=cwd, creationflags=flags)
+        else:
+            proc = subprocess.Popen(cmd, cwd=cwd)
+        proc.wait()
+    except Exception as e:
+        print(f"[ERROR] Error al lanzar o esperar Minecraft: {e}")
+
 
 def _wait_for_version(version_id: str) -> None:
     version_path = VERSIONS_DIR / version_id
     expected_jar = version_path / f"{version_id}.jar"
+
+    if expected_jar.exists():
+        return
+
+    def check_jar_exists(done_event):
+        while not expected_jar.exists():
+            time.sleep(0.5)
+        done_event.set()
+
+    done = threading.Event()
+    threading.Thread(target=check_jar_exists, args=(done,), daemon=True).start()
 
     root = tk.Tk()
     root.title("Descargando Minecraft")
@@ -562,22 +625,15 @@ def _wait_for_version(version_id: str) -> None:
     pb.pack(padx=20, pady=10)
     pb.start(50)
 
-    def check():
-        if expected_jar.exists():
+    def check_gui():
+        if done.is_set():
             pb.stop()
             root.destroy()
         else:
-            root.after(500, check)
+            root.after(500, check_gui)
 
-    root.after(500, check)
+    root.after(500, check_gui)
     root.mainloop()
-
-def launch_detached(cmd: list[str], cwd: str) -> None:
-    if os.name == "nt":
-        flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-        subprocess.Popen(cmd, cwd=cwd, creationflags=flags)
-    else:
-        subprocess.Popen(cmd, cwd=cwd, start_new_session=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  CLI

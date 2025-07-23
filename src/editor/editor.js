@@ -118,6 +118,9 @@ function loadVersions() {
                     grouped[mcVer].push(ver);
                 }
                 for (const mcVer in grouped) {
+                    const parts = mcVer.split('.').map(Number);
+                    if (parts[0] === 1 && parts[1] < 8) continue;
+
                     versions.push({ version: mcVer, modloader });
                 }
             } else {

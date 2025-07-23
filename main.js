@@ -1,12 +1,45 @@
 // main.js
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const RPC = require('discord-rpc');
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
+require('dotenv').config();
+
+const clientId = process.env.DISCORD_CLIENT_ID;
+if (!clientId) {
+  console.error('DISCORD_CLIENT_ID no está definido en .env');
+  process.exit(1);
+}
 
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 
 let mainWindow
+
+RPC.register(clientId);
+const rpc = new RPC.Client({ transport: 'ipc' });
+
+function setActivity() {
+  if (!rpc) return;
+
+  rpc.setActivity({
+    details: 'Usando GW Launcher',
+    state: '¡Jugando Minecraft!',
+    startTimestamp: Date.now(),
+    largeImageKey: 'logo',
+    largeImageText: 'GW Launcher',
+    instance: false,
+  });
+}
+
+rpc.on('ready', () => {
+  setActivity();
+  setInterval(() => {
+    setActivity();
+  }, 15e3);
+});
+
+rpc.login({ clientId }).catch(console.error);
 
 function createWindow() {
   mainWindow = new BrowserWindow({
