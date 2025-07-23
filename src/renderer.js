@@ -352,18 +352,45 @@ async function runVersionsAndWait() {
   }
 }
 
+function ensureDefaultVersionFiles() {
+  const versionFiles = [
+    'versiones-minecraft.json',
+    'versiones-fabric.json',
+    'versiones-forge.json',
+    'versiones-quilt.json'
+  ];
+
+  const srcDir = path.resolve(__dirname, 'assets', 'versions');
+
+  for (const file of versionFiles) {
+    const srcPath = path.join(srcDir, file);
+    const destPath = path.join(GW_DIR, file);
+
+    if (!fs.existsSync(destPath) && fs.existsSync(srcPath)) {
+      try {
+        fs.copyFileSync(srcPath, destPath);
+        console.log(`[ensureDefaultVersionFiles] Copiado: ${file}`);
+      } catch (err) {
+        console.error(`[ensureDefaultVersionFiles] Error copiando ${file}:`, err);
+      }
+    }
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   profiles = loadProfiles()
   renderProfileList()
   renderParticles()
 
   $('#btn-new-profile').onclick = async () => {
+    ensureDefaultVersionFiles();
     const ok = await runVersionsAndWait();
     if (ok) ipcRenderer.send('open-editor', null);
     else alert('No se pudo cargar las versiones disponibles.');
   };
 
   $('#btn-edit-profile').onclick = async () => {
+    ensureDefaultVersionFiles();
     if (!active) return;
     const ok = await runVersionsAndWait();
     if (ok) ipcRenderer.send('open-editor', active);
