@@ -1,12 +1,15 @@
-const { spawn , exec } = require('child_process')
+const { spawn, exec } = require('child_process')
 const { ipcRenderer, shell } = require('electron')
 const path = require('path')
 const os = require('os')
 const fs = require('fs')
 
 const pythonScript = getPythonScriptPath()
-const profilesFile = path.join(os.homedir(), '.gwlauncher', 'ui_profiles.json')
-const versionsDir = path.join(os.homedir(), '.gwlauncher', 'instances')
+
+const GW_DIR = path.join(os.homedir(), '.gwlauncher');
+const profilesFile = path.join(GW_DIR, 'ui_profiles.json')
+const vanillaVersionsFile = path.join(GW_DIR, 'versiones-minecraft.json');
+const versionsDir = path.join(GW_DIR, 'instances')
 
 let active = null
 let profiles = {}
@@ -305,13 +308,68 @@ async function launch() {
   ipcRenderer.send('close-launcher');
 }
 
+async function waitForFile(filepath, timeout = 10000) {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    (function check() {
+      if (fs.existsSync(filepath)) return resolve(true);
+      if (Date.now() - start > timeout) return reject(new Error('Timeout esperando archivo'));
+      setTimeout(check, 250);
+    })();
+  });
+}
+
+async function runVersionsAndWait() {
+  const isWin = process.platform === 'win32';
+
+  if (!isWin) {
+    const ok = await ensurePythonAndLibs();
+    if (!ok) return false;
+  }
+
+  const args = ['versions'];
+  const proc = isWin
+    ? spawn(pythonScript, args, {
+      cwd: path.dirname(pythonScript),
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    })
+    : spawn('python3', [pythonScript, ...args], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore'
+    });
+
+  proc.unref();
+
+  try {
+    await waitForFile(vanillaVersionsFile, 10000);
+    return true;
+  } catch (e) {
+    console.error('[versions] Archivo no generado a tiempo:', e.message);
+    return false;
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   profiles = loadProfiles()
   renderProfileList()
   renderParticles()
 
-  $('#btn-new-profile').onclick = () => ipcRenderer.send('open-editor', null)
-  $('#btn-edit-profile').onclick = () => ipcRenderer.send('open-editor', active)
+  $('#btn-new-profile').onclick = async () => {
+    const ok = await runVersionsAndWait();
+    if (ok) ipcRenderer.send('open-editor', null);
+    else alert('No se pudo cargar las versiones disponibles.');
+  };
+
+  $('#btn-edit-profile').onclick = async () => {
+    if (!active) return;
+    const ok = await runVersionsAndWait();
+    if (ok) ipcRenderer.send('open-editor', active);
+    else alert('No se pudo cargar las versiones disponibles.');
+  };
+
   $('#btn-launch').onclick = launch
 
   $('#minimize-btn').onclick = () => ipcRenderer.send('window-minimize');
