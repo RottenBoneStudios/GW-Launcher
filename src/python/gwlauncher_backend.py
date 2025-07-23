@@ -160,7 +160,8 @@ def save_profile(username: str, version: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def get_required_java_version(minecraft_version: str) -> int:
-    if "fabric" in minecraft_version.lower():
+    lowered = minecraft_version.lower()
+    if "fabric" in lowered or "quilt" in lowered:
         return 21
 
     parts = minecraft_version.split(".")
@@ -348,6 +349,24 @@ def install_modloader(loader: ModLoader, version: str) -> str:
                 _show_error("Error Forge", f"No se pudo instalar Forge {fv}:\n{e}")
                 return version
         return mid
+    
+    if loader == "quilt":
+        print(f"[DEBUG] Intentando Quilt para {version!r}")
+        try:
+            mll.quilt.install_quilt(version, str(GW_DIR))
+        except Exception as e:
+            msg = f"No se pudo instalar Quilt para la versión {version}: {e}"
+            print(f"[ERROR] {msg}")
+            _show_error("Error Quilt", msg)
+            return version
+        quilts = [vid for vid in _installed_ids() if version in vid and "quilt" in vid.lower()]
+        print(f"[DEBUG] Builds Quilt instalados tras instalación: {quilts}")
+        chosen = quilts[-1] if quilts else version
+        if chosen == version:
+            msg = f"No se encontró build Quilt para {version}"
+            print(f"[WARN] {msg}")
+            _show_error("Quilt No Encontrado", msg)
+        return chosen
 
     if loader == "fabric":
         print(f"[DEBUG] Intentando Fabric para {version!r}")
@@ -574,7 +593,7 @@ def _parse_cli(argv: List[str] | None = None) -> argparse.Namespace:
     l.add_argument("version")
     l.add_argument("username")
     l.add_argument("--ram", type=int, help="Memoria máxima en MiB (p. ej. 4096)")
-    l.add_argument("--modloader", choices=["", "forge", "fabric"], default="")
+    l.add_argument("--modloader", choices=["", "forge", "fabric", "quilt"], default="")
     l.add_argument(
         "--jvm-arg", dest="jvm_args", action="append",
         metavar="ARG", help="Argumento JVM adicional (puede repetirse)"
@@ -586,7 +605,8 @@ def _parse_cli(argv: List[str] | None = None) -> argparse.Namespace:
 
 def _main() -> None:
     args = _parse_cli()
-
+    _dump_available_versions_json()
+    
     if args.cmd == "install":
         splash = _SplashLogo()
         try:
@@ -605,7 +625,6 @@ def _main() -> None:
         )
 
     elif args.cmd == "versions":
-        _dump_available_versions_json()
         print("\n".join(sorted(_installed_ids())))
     else:
         sys.exit(1)

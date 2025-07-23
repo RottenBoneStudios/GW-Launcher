@@ -51,7 +51,7 @@ function getRecommendedFlags(mcVersion) {
     const selected = select.selectedOptions[0];
     const modloader = selected?.dataset?.modloader || 'vanilla';
 
-    if (modloader === 'fabric' || modloader === 'forge') {
+    if (modloader === 'fabric' || modloader === 'forge' || modloader === 'quilt') {
         return [];
     }
 
