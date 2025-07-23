@@ -6,7 +6,7 @@ const fs = require('fs')
 const os = require('os')
 require('dotenv').config();
 
-const clientId = process.env.DISCORD_CLIENT_ID;
+const clientId = process.env.DISCORD_CLIENT_ID || '1397615014478872727';
 if (!clientId) {
   console.error('DISCORD_CLIENT_ID no está definido en .env');
   process.exit(1);
