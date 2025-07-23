@@ -319,37 +319,28 @@ async function waitForFile(filepath, timeout = 10000) {
   });
 }
 
-async function runVersionsAndWait() {
+function runVersions() {
   const isWin = process.platform === 'win32';
 
   if (!isWin) {
-    const ok = await ensurePythonAndLibs();
-    if (!ok) return false;
-  }
-
-  const args = ['versions'];
-  const proc = isWin
-    ? spawn(pythonScript, args, {
-      cwd: path.dirname(pythonScript),
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    })
-    : spawn('python3', [pythonScript, ...args], {
-      cwd: process.cwd(),
-      detached: true,
-      stdio: 'ignore'
+    return ensurePythonAndLibs().then(ok => {
+      if (!ok) return false;
+      spawn('python3', [pythonScript, 'versions'], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'ignore'
+      }).unref();
     });
-
-  proc.unref();
-
-  try {
-    await waitForFile(vanillaVersionsFile, 10000);
-    return true;
-  } catch (e) {
-    console.error('[versions] Archivo no generado a tiempo:', e.message);
-    return false;
   }
+
+  spawn(pythonScript, ['versions'], {
+    cwd: path.dirname(pythonScript),
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  }).unref();
+
+  return Promise.resolve(true);
 }
 
 function ensureDefaultVersionFiles() {
@@ -360,10 +351,10 @@ function ensureDefaultVersionFiles() {
     'versiones-quilt.json'
   ];
 
-  const srcDir = path.resolve(__dirname, 'assets', 'versions');
+  const DirVersions = path.resolve('assets', 'versions');
 
   for (const file of versionFiles) {
-    const srcPath = path.join(srcDir, file);
+    const srcPath = path.join(DirVersions, file);
     const destPath = path.join(GW_DIR, file);
 
     if (!fs.existsSync(destPath) && fs.existsSync(srcPath)) {
@@ -383,16 +374,26 @@ window.addEventListener('DOMContentLoaded', () => {
   renderParticles()
 
   $('#btn-new-profile').onclick = async () => {
-    ensureDefaultVersionFiles();
-    const ok = await runVersionsAndWait();
-    if (ok) ipcRenderer.send('open-editor', null);
-    else alert('No se pudo cargar las versiones disponibles.');
+    const btn = $('#btn-new-profile');
+    const originalText = btn.textContent;
+    btn.textContent = 'Cargando...';
+    btn.disabled = true;
+
+    try {
+      ensureDefaultVersionFiles();
+      const ok = await runVersions();
+      if (ok) ipcRenderer.send('open-editor', null);
+      else alert('No se pudo cargar las versiones disponibles.');
+    } finally {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
   };
 
   $('#btn-edit-profile').onclick = async () => {
     ensureDefaultVersionFiles();
     if (!active) return;
-    const ok = await runVersionsAndWait();
+    const ok = await runVersions();
     if (ok) ipcRenderer.send('open-editor', active);
     else alert('No se pudo cargar las versiones disponibles.');
   };
