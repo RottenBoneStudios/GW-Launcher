@@ -1,5 +1,6 @@
+#gwlauncher_backend.py
 from __future__ import annotations
-import argparse, json, os, subprocess, sys, uuid, requests, tarfile, zipfile, shutil, time
+import argparse, json, os, subprocess, sys, uuid, requests, tarfile, zipfile, shutil, time, hashlib
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Callable
@@ -74,6 +75,13 @@ def get_required_java_version(minecraft_version: str) -> int:
             return 21
     return 21
 
+def sha256sum(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
 def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int, str], None]] = None) -> Path:
     _ensure_dir()
     java_path = JAVA_DIR / str(java_version)
@@ -92,9 +100,9 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
                 return javaexe
     java_urls = {
         8: {
-            "Linux": "https://www.dropbox.com/scl/fi/a363ohfhydwwn1gfvgkhc/jdk-8u451-linux-x64.tar.gz?dl=1",
-            "Darwin": "https://www.dropbox.com/scl/fi/mu9j2thwts7f79r1k7t5t/jdk-8u451-macosx-x64.tar.gz?dl=1",
-            "Windows": "https://www.dropbox.com/scl/fi/m14dal0l5k2d5x4anhuyf/jdk-8u451-windows-x64.zip?dl=1",
+            "Linux": "https://github.com/RottenBoneStudios/Java-8_JDK/releases/download/Java-8_JDK/jdk-8u451-linux-x64.tar.gz",
+            "Darwin": "https://github.com/RottenBoneStudios/Java-8_JDK/releases/download/Java-8_JDK/jdk-8u451-macosx-x64.tar.gz",
+            "Windows": "https://github.com/RottenBoneStudios/Java-8_JDK/releases/download/Java-8_JDK/jdk-8u451-windows-x64.zip",
         },
         17: {
             "Linux": "https://download.oracle.com/java/17/archive/jdk-17.0.12_linux-x64_bin.tar.gz",
@@ -108,6 +116,11 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
         },
     }
     ext_map = {"Windows": "zip", "Linux": "tar.gz", "Darwin": "tar.gz"}
+    hashes = {
+        8: {"Linux": "4b945be38cc9b44ddb1bdd4a7d28fdbee3cabb410575e20cdbe157d2bf5b886d", "Darwin": "478fa01d2c1d33853220d3b7086a5756a795cb0ea915d0ae8ce6b9c214cc3ae1", "Windows": "7b92b7ce9bd4ad5b480afe1f63d32cc2254611e33beca9ecace844f8c7d535ee"},
+        17: {"Linux": "311f1448312ecab391fe2a1b2ac140d6e1c7aea6fbf08416b466a58874f2b40f", "Darwin": "4a157a935142096e1bac83e53a458e41c05c4aad0e8414c0a5c01f36dc44c901", "Windows": "af797d9d5003c0daa99380fb8b0a9af36094aabbc5db7a34627e81857571f1e8"},
+        21: {"Linux": "d87272944278713fc7a120cf024d2818d136b5debc750aa17045e3c6f045b867", "Darwin": "43eaf4e0224986087c946c201567fe31b2b6b23dec5a702bcf679276708d0d7e", "Windows": "174aaf80b21860657bbc024fcfadf092fc43653a308383ee04b2e5406972cc2a"},
+    }
     system = "Windows" if os.name == "nt" else "Linux" if os.name == "posix" else "Darwin"
     url = java_urls[java_version][system]
     package_type = ext_map[system]
@@ -116,6 +129,8 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
     total = int(response.headers.get("content-length", 0))
     temp_file = JAVA_DIR / f"java_{java_version}.{package_type}"
     downloaded = 0
+    start_time = time.time()
+    last_update = start_time
     with open(temp_file, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             if not chunk:
@@ -123,8 +138,24 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
             f.write(chunk)
             downloaded += len(chunk)
             if total and progress_cb:
-                percent = int(downloaded * 100 / total)
-                progress_cb(percent // 2, f"Descargando Java {java_version}…")
+                now = time.time()
+                elapsed = now - last_update
+                if elapsed >= 1 or downloaded == total:
+                    percent = int(downloaded * 100 / total)
+                    total_mb = total / 1024 / 1024
+                    done_mb = downloaded / 1024 / 1024
+                    speed = (downloaded / 1024 / 1024) / max(now - start_time, 0.001)
+                    progress_cb(
+                        percent // 2,
+                        f"Descargando Java {java_version}… ({done_mb:.1f}/{total_mb:.1f} MB) {speed:.2f} MB/s",
+                    )
+                    last_update = now
+    expected_hash = hashes[java_version][system]
+    if expected_hash:
+        file_hash = sha256sum(temp_file)
+        if file_hash != expected_hash:
+            temp_file.unlink(missing_ok=True)
+            raise RuntimeError(f"Archivo corrupto de Java {java_version}, hash inválido")
     extract_path = JAVA_DIR / f"java_{java_version}_temp"
     extract_path.mkdir(parents=True, exist_ok=True)
     if package_type == "zip":

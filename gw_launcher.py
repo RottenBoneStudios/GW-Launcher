@@ -1,3 +1,4 @@
+#gw_launcher.py
 from __future__ import annotations
 import json, math, os, random, sys, threading, shutil
 from datetime import date
@@ -5,7 +6,7 @@ from pathlib import Path
 from discord_rpc import DiscordRPC
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Dict, Any
-from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread
+from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread, QProcess
 from PySide6.QtGui import QFont, QGuiApplication, QPainter, QPixmap, QTransform, QColor, QPainterPath, QLinearGradient, QRadialGradient, QBrush, QIcon, QAction
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu
 from PySide6.QtCore import QSharedMemory
@@ -439,8 +440,8 @@ class GWLauncher(QMainWindow):
     class LaunchWorker(QObject):
         progress = Signal(int, str)
         finished_err = Signal(str)
-        game_started = Signal(int)
-        game_ended = Signal(int)
+        ready_to_launch = Signal(list, str)
+
         def __init__(self, version: str, username: str, loader: str, ram: int, jvm: list[str], gw_dir: Path):
             super().__init__()
             self.version = version
@@ -449,24 +450,31 @@ class GWLauncher(QMainWindow):
             self.ram = ram
             self.jvm = jvm
             self.gw_dir = gw_dir
+
         @Slot()
         def run(self):
             try:
                 import gwlauncher_backend as backend
+
                 self.progress.emit(5, "Instalando versión…")
                 backend.install_version(self.version)
+
                 self.progress.emit(20, "Instalando modloader…")
                 ml = "" if self.loader == "vanilla" else (self.loader or "")
                 real_id = backend.install_modloader(ml, self.version) if ml else self.version
+
                 self.progress.emit(40, "Verificando archivos…")
                 backend._wait_for_version(real_id)
+
                 self.progress.emit(60, "Preparando entorno…")
                 instances_dir = getattr(backend, "INSTANCES_DIR", self.gw_dir / "instances")
                 game_dir = instances_dir / real_id
                 game_dir.mkdir(parents=True, exist_ok=True)
                 if os.name == "posix":
                     os.chmod(game_dir, 0o755)
+
                 backend.save_profile(self.username, self.version)
+
                 self.progress.emit(80, "Construyendo comando…")
                 cmd = backend.build_command(
                     real_id,
@@ -477,13 +485,24 @@ class GWLauncher(QMainWindow):
                     optimize=False,
                     progress_cb=lambda p, t: self.progress.emit(80 + p // 5, t),
                 )
-                self.progress.emit(95, "Lanzando Minecraft…")
-                proc = backend.launch_attached(cmd, str(getattr(backend, "GW_DIR", self.gw_dir)))
-                self.game_started.emit(proc.pid)
-                proc.wait()
-                self.game_ended.emit(proc.pid)
+
+                self.progress.emit(95, "Listo para lanzar…")
+                self.ready_to_launch.emit(cmd, str(backend.GW_DIR))
+
             except Exception as e:
                 self.finished_err.emit(str(e))
+
+        def _handle_stdout(self):
+            if self.proc:
+                data = self.proc.readAllStandardOutput().data().decode(errors="ignore")
+                sys.stdout.write(data)
+                sys.stdout.flush()
+
+        def _handle_stderr(self):
+            if self.proc:
+                data = self.proc.readAllStandardError().data().decode(errors="ignore")
+                sys.stderr.write(data)
+                sys.stderr.flush()
 
     def __init__(self):
         super().__init__()
@@ -748,33 +767,49 @@ class GWLauncher(QMainWindow):
 
     def _launch(self):
         name = self._current_profile_name()
-        if not name: return
+        if not name:
+            return
         p = self._profiles.get(name)
         if not p:
             QMessageBox.warning(self, "Perfil no encontrado", "No se pudo cargar el perfil seleccionado.")
             return
+
         version = p.get("version",""); username = p.get("username") or "Player"
         ram = int(p.get("ram",2048)); loader = p.get("modloader","vanilla"); jvm = p.get("jvmFlags",[])
+
         self.loading.start("Preparando el lanzamiento…")
         self._set_play_ready(False)
+
         self._launch_thread = QThread(self)
         self._launch_worker = GWLauncher.LaunchWorker(version, username, loader, ram, jvm, GW_DIR)
         self._launch_worker.moveToThread(self._launch_thread)
         self._launch_worker.progress.connect(self.loading.set_progress)
-        self._launch_worker.game_started.connect(lambda pid: (self.loading.finish(), self._rpc_set_ip(), self.hide(), self.tray.showMessage("GW Launcher", "Minecraft iniciado", QSystemTrayIcon.Information, 2000)))
-        def _on_game_ended(pid: int):
-            self._rpc_set_browsing()
-            QApplication.instance().quit()
-        self._launch_worker.game_ended.connect(_on_game_ended)
-        def on_err(msg: str):
-            self.loading.hide()
-            QMessageBox.critical(self, "Error al lanzar", msg)
-            self._set_play_ready(True)
-            self._rpc_set_browsing()
-            self._cleanup_launch_thread()
-        self._launch_worker.finished_err.connect(on_err)
+        self._launch_worker.finished_err.connect(self._on_launch_error)
+        self._launch_worker.ready_to_launch.connect(self._start_process)  # ⬅ NUEVO
         self._launch_thread.started.connect(self._launch_worker.run)
         self._launch_thread.start()
+
+    def _on_launch_error(self, msg: str):
+        self.loading.hide()
+        QMessageBox.critical(self, "Error al lanzar", msg)
+        self._set_play_ready(True)
+        self._rpc_set_browsing()
+        self._cleanup_launch_thread()
+
+    def _start_process(self, cmd: list[str], cwd: str):
+        proc = QProcess(self)
+        proc.setProgram(cmd[0])
+        proc.setArguments(cmd[1:])
+        proc.setWorkingDirectory(cwd)
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+
+        proc.readyReadStandardOutput.connect(lambda: sys.stdout.write(proc.readAllStandardOutput().data().decode(errors="ignore")))
+        proc.readyReadStandardError.connect(lambda: sys.stderr.write(proc.readAllStandardError().data().decode(errors="ignore")))
+
+        proc.started.connect(lambda: (self.loading.finish(), self._rpc_set_ip(), self.hide(), self.tray.showMessage("GW Launcher", "Minecraft iniciado", QSystemTrayIcon.Information, 2000)))
+        proc.finished.connect(lambda _, __: QApplication.instance().quit())
+
+        proc.start()
 
     def show_profiles_json(self):
         html = "<pre>"+json.dumps(self._profiles, indent=2, ensure_ascii=False)+"</pre>"
