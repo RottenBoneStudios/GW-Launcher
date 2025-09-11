@@ -1,0 +1,5 @@
+pyinstaller
+PySide6
+requests
+minecraft-launcher-lib
+certifi
