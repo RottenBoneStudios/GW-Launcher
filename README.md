@@ -43,6 +43,7 @@ El ejecutable se generará en la carpeta dist/ como:
 dist/GWLauncher.exe   (Windows)
 
 ## Estructura del proyecto
+```
 gw-launcher/
 ├── gw_launcher.py          # Interfaz principal (PySide6)
 ├── gwlauncher_backend.py   # Backend para instalación y lanzamiento de Minecraft
@@ -52,9 +53,10 @@ gw-launcher/
 │   ├── background.png
 │   └── ...
 └── README.md
-
+```
 ## Notas
 - El launcher instala automáticamente la versión de Java necesaria para cada versión de Minecraft.
 - Se cierra automáticamente cuando cierras Minecraft.
 - Si intentas abrir dos veces el launcher, la segunda instancia no se abrirá.
 - Se recomienda usar Windows 10/11 o Linux moderno para compatibilidad total.
+
