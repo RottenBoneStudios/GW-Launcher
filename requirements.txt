@@ -3,3 +3,4 @@ PySide6
 requests
 minecraft-launcher-lib
 certifi
+nbtlib

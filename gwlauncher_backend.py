@@ -7,11 +7,15 @@ from typing import Any, Dict, List, Literal, Optional, Callable
 import minecraft_launcher_lib as mll
 from minecraft_launcher_lib import utils
 
+
 GW_DIR: Path = Path.home() / ".gwlauncher"
 VERSIONS_DIR: Path = GW_DIR / "versions"
 INSTANCES_DIR: Path = GW_DIR / "instances"
 JAVA_DIR: Path = GW_DIR / "java"
 _PROFILES_FILE = GW_DIR / "profiles.json"
+
+MODPACK_URL = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0011/GW_ModPack.zip"
+MODPACK_SHA256 = "b61368e07729ba4704c48b5f88a38ea51fe6073c11e908fc7a0136d91aef06a9"
 
 def _ensure_dir() -> None:
     for d in (GW_DIR, VERSIONS_DIR, INSTANCES_DIR, JAVA_DIR):
@@ -264,33 +268,74 @@ def _extract_flag_key(flag: str) -> str:
 def _is_gc_flag(flag: str) -> bool:
     return flag.startswith("-XX:+Use") and flag.endswith("GC")
 
-def build_command(version_id: str, username: str, *, game_dir: Path, ram: Optional[int] = None, jvm_args: Optional[List[str]] = None, optimize: bool = False, progress_cb: Optional[Callable[[int, str], None]] = None) -> List[str]:
+def ensure_modpack(game_dir: Path) -> None:
+    mods_dir = game_dir / "mods"
+    marker = mods_dir / ".gw_modpack_applied"
+    mods_dir.mkdir(parents=True, exist_ok=True)
+    if marker.exists():
+        return
+    tmp_file = GW_DIR / "GW_ModPack.zip"
+    if not tmp_file.exists() or sha256sum(tmp_file) != MODPACK_SHA256:
+        with requests.get(MODPACK_URL, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            with open(tmp_file, "wb") as f:
+                for chunk in r.iter_content(8192):
+                    f.write(chunk)
+    if sha256sum(tmp_file) != MODPACK_SHA256:
+        tmp_file.unlink(missing_ok=True)
+        raise RuntimeError("El modpack descargado tiene un hash inválido")
+    with zipfile.ZipFile(tmp_file, "r") as zf:
+        for member in zf.namelist():
+            if member.endswith(".jar") and not member.endswith("/"):
+                target = mods_dir / Path(member).name
+                with zf.open(member) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+            elif member.startswith("mods/") and not member.endswith("/"):
+                rel_path = Path(member).relative_to("mods")
+                target = mods_dir / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+    marker.write_text("ok", encoding="utf-8")
+
+def build_command(
+    version_id: str,
+    username: str,
+    *,
+    game_dir: Path,
+    ram: Optional[int] = None,
+    jvm_args: Optional[List[str]] = None,
+    optimize: bool = False,
+    server: Optional[str] = None,
+    port: Optional[int] = None,
+    progress_cb: Optional[Callable[[int, str], None]] = None,
+) -> List[str]:
     opts = _offline_options(username)
     opts["gameDirectory"] = str(game_dir)
     if os.name == "posix":
         os.chmod(game_dir, 0o755)
+
+    if server:
+        opts["server"] = server
+    if port:
+        opts["port"] = str(port)
+
     java_version = _detect_java_version(version_id)
     java_executable = download_java_runtime(java_version, progress_cb)
+
     user_flags: List[str] = list(jvm_args or [])
     filtered_user_flags: List[str] = []
-    seen_keys = set()
-    seen_gc = False
+    seen_keys = set(); seen_gc = False
     for f in user_flags:
         key = _extract_flag_key(f)
         if _is_gc_flag(f):
-            if seen_gc:
-                continue
+            if seen_gc: continue
             seen_gc = True
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        filtered_user_flags.append(f)
-    user_flags = filtered_user_flags
-    final_args = user_flags[:]
-    if ram is not None:
-        final_args.append(f"-Xmx{ram}M")
-    if final_args:
-        opts["jvmArguments"] = final_args
+        if key in seen_keys: continue
+        seen_keys.add(key); filtered_user_flags.append(f)
+    if ram: filtered_user_flags.append(f"-Xmx{ram}M")
+    if filtered_user_flags: opts["jvmArguments"] = filtered_user_flags
+
     command = mll.command.get_minecraft_command(version_id, str(GW_DIR), opts)
     command[0] = str(java_executable)
     return command

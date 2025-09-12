@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Dict, Any
 from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread, QProcess
 from PySide6.QtGui import QFont, QGuiApplication, QPainter, QPixmap, QTransform, QColor, QPainterPath, QLinearGradient, QRadialGradient, QBrush, QIcon, QAction
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu, QInputDialog
 from PySide6.QtCore import QSharedMemory
 
 def _bundle_base() -> Path:
@@ -442,7 +442,7 @@ class GWLauncher(QMainWindow):
         finished_err = Signal(str)
         ready_to_launch = Signal(list, str)
 
-        def __init__(self, version: str, username: str, loader: str, ram: int, jvm: list[str], gw_dir: Path):
+        def __init__(self, version: str, username: str, loader: str, ram: int, jvm: list[str], gw_dir: Path, profile_name: str):
             super().__init__()
             self.version = version
             self.username = username
@@ -450,6 +450,7 @@ class GWLauncher(QMainWindow):
             self.ram = ram
             self.jvm = jvm
             self.gw_dir = gw_dir
+            self.profile_name = profile_name
 
         @Slot()
         def run(self):
@@ -466,12 +467,15 @@ class GWLauncher(QMainWindow):
                 self.progress.emit(40, "Verificando archivos…")
                 backend._wait_for_version(real_id)
 
-                self.progress.emit(60, "Preparando entorno…")
+                self.progress.emit(55, "Preparando entorno…")
                 instances_dir = getattr(backend, "INSTANCES_DIR", self.gw_dir / "instances")
-                game_dir = instances_dir / real_id
+                game_dir = instances_dir / f"{real_id}_{self.profile_name}"
                 game_dir.mkdir(parents=True, exist_ok=True)
                 if os.name == "posix":
                     os.chmod(game_dir, 0o755)
+
+                self.progress.emit(65, "Aplicando modpack GatitosWorld…")
+                backend.ensure_modpack(game_dir)
 
                 backend.save_profile(self.username, self.version)
 
@@ -483,6 +487,8 @@ class GWLauncher(QMainWindow):
                     ram=self.ram,
                     jvm_args=self.jvm,
                     optimize=False,
+                    server="na37.holy.gg",
+                    port=19431,
                     progress_cb=lambda p, t: self.progress.emit(80 + p // 5, t),
                 )
 
@@ -506,44 +512,108 @@ class GWLauncher(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GW Launcher"); self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint); self.resize(1100, 700)
-        root = QWidget(self); root.setObjectName("root"); root.setStyleSheet(f"QWidget#root {{ background: transparent; color: {PALETTE['fg']}; }}"); self.setCentralWidget(root)
-        self.bg = BackgroundLayer(ASSETS["background"], root); self.overlay_images = OverlayImages(root); self.particles = ParticleLayer(root)
-        self.window_frame = QFrame(root); self.window_frame.setObjectName("window"); self.window_frame.setStyleSheet("QFrame#window { background: transparent; border: none; }"); self.window_frame.setGeometry(root.rect())
-        self.titlebar = TitleBar(self); self.titlebar.setParent(root)
-        main = QWidget(root); main.setObjectName("main")
-        main_lay = QHBoxLayout(main); main_lay.setContentsMargins(0, 0, 0, 0); main_lay.setSpacing(0)
-        sidebar = QFrame(main); sidebar.setObjectName("sidebar"); sidebar.setMinimumWidth(300); sidebar.setMaximumWidth(420)
+        self.setWindowTitle("GW Launcher")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
+        self.resize(1100, 700)
+        root = QWidget(self)
+        root.setObjectName("root")
+        root.setStyleSheet(f"QWidget#root {{ background: transparent; color: {PALETTE['fg']}; }}")
+        self.setCentralWidget(root)
+        self.bg = BackgroundLayer(ASSETS["background"], root)
+        self.overlay_images = OverlayImages(root)
+        self.particles = ParticleLayer(root)
+        self.window_frame = QFrame(root)
+        self.window_frame.setObjectName("window")
+        self.window_frame.setStyleSheet("QFrame#window { background: transparent; border: none; }")
+        self.window_frame.setGeometry(root.rect())
+        self.titlebar = TitleBar(self)
+        self.titlebar.setParent(root)
+        main = QWidget(root)
+        main.setObjectName("main")
+        main_lay = QHBoxLayout(main)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+        main_lay.setSpacing(0)
+        sidebar = QFrame(main)
+        sidebar.setObjectName("sidebar")
+        sidebar.setMinimumWidth(300)
+        sidebar.setMaximumWidth(420)
         sidebar.setStyleSheet(
-            f"QFrame#sidebar {{ background: rgba(0,0,0,0.5); padding: 24px; }} QLabel#sideTitle {{ color: #ffffff; font-size: 22px; font-weight: 600; }} QListWidget#profiles {{ background: transparent; border: none; color: #ffffff; font-size: 16px; }} QListWidget#profiles::item {{ margin: 0; padding: 0; border: 0; }} QScrollBar:vertical {{ background: transparent; width: 10px; margin: 4px 0 4px 0; }} QScrollBar::handle:vertical {{ background: {PALETTE['primary']}; border-radius: 5px; min-height: 24px; }} QScrollBar::handle:vertical:hover {{ background: {PALETTE['primary_hov']}; }} QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }} QPushButton.side {{ border: 0; border-radius: 12px; padding: 12px; color: #ffffff; font-weight: 600; font-size: 15px; }} QPushButton#btnNew {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); }} QPushButton#btnNew:hover {{ filter: brightness(1.1); }} QPushButton#btnEdit[enabled=\"false\"] {{ background: rgba(147, 51, 234, 0.5); color: #ffffff; }} QPushButton#btnEdit[enabled=\"true\"] {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); color: #ffffff; }}")
-        sv = QVBoxLayout(sidebar); sv.setContentsMargins(20, 20, 20, 20); sv.setSpacing(14)
-        st = QLabel("Perfiles", sidebar); st.setObjectName("sideTitle")
-        self.profiles = QListWidget(sidebar); self.profiles.setObjectName("profiles"); self.profiles.itemSelectionChanged.connect(self._on_profile_select); self.profiles.setSpacing(10)
+            f"QFrame#sidebar {{ background: rgba(0,0,0,0.5); padding: 24px; }} "
+            f"QLabel#sideTitle {{ color: #ffffff; font-size: 22px; font-weight: 600; }} "
+            f"QListWidget#profiles {{ background: transparent; border: none; color: #ffffff; font-size: 16px; }} "
+            f"QListWidget#profiles::item {{ margin: 0; padding: 0; border: 0; }} "
+            f"QScrollBar:vertical {{ background: transparent; width: 10px; margin: 4px 0 4px 0; }} "
+            f"QScrollBar::handle:vertical {{ background: {PALETTE['primary']}; border-radius: 5px; min-height: 24px; }} "
+            f"QScrollBar::handle:vertical:hover {{ background: {PALETTE['primary_hov']}; }} "
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }} "
+            f"QPushButton.side {{ border: 0; border-radius: 12px; padding: 12px; color: #ffffff; font-weight: 600; font-size: 15px; }} "
+            f"QPushButton#btnNew {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); }} "
+            f"QPushButton#btnNew:hover {{ filter: brightness(1.1); }} "
+            f"QPushButton#btnEdit[enabled=\"false\"] {{ background: rgba(147, 51, 234, 0.5); color: #ffffff; }} "
+            f"QPushButton#btnEdit[enabled=\"true\"] {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); color: #ffffff; }}"
+        )
+        sv = QVBoxLayout(sidebar)
+        sv.setContentsMargins(20, 20, 20, 20)
+        sv.setSpacing(14)
+        st = QLabel("Perfiles", sidebar)
+        st.setObjectName("sideTitle")
+        self.profiles = QListWidget(sidebar)
+        self.profiles.setObjectName("profiles")
+        self.profiles.itemSelectionChanged.connect(self._on_profile_select)
+        self.profiles.setSpacing(10)
         from PySide6.QtWidgets import QAbstractItemView, QSizePolicy
         self.profiles.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.profiles.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.profiles.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.profiles.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         footer = QFrame(sidebar)
-        fv = QVBoxLayout(footer); fv.setContentsMargins(0, 8, 0, 0); fv.setSpacing(8)
-        self.btn_new = QPushButton("＋ Crear perfil", footer); self.btn_new.setObjectName("btnNew"); self.btn_new.setProperty("class", "side"); self.btn_new.setCursor(Qt.PointingHandCursor)
-        self.btn_edit = QPushButton("✎ Editar perfil", footer); self.btn_edit.setObjectName("btnEdit"); self.btn_edit.setProperty("class", "side"); self.btn_edit.setEnabled(False); self.btn_edit.setCursor(Qt.PointingHandCursor)
-        fv.addWidget(self.btn_new); fv.addWidget(self.btn_edit)
-        self._sync_btn_edit_style(); sv.addWidget(st); sv.addWidget(self.profiles, 1); sv.addWidget(footer, 0, Qt.AlignBottom)
-        content = QFrame(main); content.setObjectName("content")
-        content.setStyleSheet(f"QFrame#content {{ background: rgba(21,23,56,0.5); padding: 24px 32px; }} QLabel#headline {{ color: #ffffff; font-size: 21px; font-weight: 500; }} QTextBrowser#news {{ background: transparent; border: none; color: #ffffff; }}")
-        cv = QVBoxLayout(content); cv.setContentsMargins(24, 24, 24, 24); cv.setSpacing(16)
-        self.headline = QLabel("Selecciona un perfil", content); self.headline.setObjectName("headline")
-        self.news = QTextBrowser(content); self.news.setObjectName("news"); self.news.setHtml('<p style="opacity:0.9;font-style:italic;text-align:center;margin-top:40%;color:#ffffff;">ℹ️ Aquí aparecerán las noticias y changelogs de Minecraft…</p>'); self.news.installEventFilter(self)
-        cv.addWidget(self.headline); cv.addWidget(self.news, 1)
-        main_lay.addWidget(sidebar); main_lay.addWidget(content, 1)
+        fv = QVBoxLayout(footer)
+        fv.setContentsMargins(0, 8, 0, 0)
+        fv.setSpacing(8)
+        self.btn_new = QPushButton("＋ Crear perfil", footer)
+        self.btn_new.setObjectName("btnNew")
+        self.btn_new.setProperty("class", "side")
+        self.btn_new.setCursor(Qt.PointingHandCursor)
+        self.btn_edit = QPushButton("✎ Editar perfil", footer)
+        self.btn_edit.setObjectName("btnEdit")
+        self.btn_edit.setProperty("class", "side")
+        self.btn_edit.setEnabled(False)
+        self.btn_edit.setCursor(Qt.PointingHandCursor)
+        fv.addWidget(self.btn_new)
+        fv.addWidget(self.btn_edit)
+        self._sync_btn_edit_style()
+        sv.addWidget(st)
+        sv.addWidget(self.profiles, 1)
+        sv.addWidget(footer, 0, Qt.AlignBottom)
+        content = QFrame(main)
+        content.setObjectName("content")
+        content.setStyleSheet(
+            f"QFrame#content {{ background: rgba(21,23,56,0.5); padding: 24px 32px; }} "
+            f"QLabel#headline {{ color: #ffffff; font-size: 21px; font-weight: 500; }} "
+            f"QTextBrowser#news {{ background: transparent; border: none; color: #ffffff; }}"
+        )
+        cv = QVBoxLayout(content)
+        cv.setContentsMargins(24, 24, 24, 24)
+        cv.setSpacing(16)
+        self.headline = QLabel("Selecciona un perfil", content)
+        self.headline.setObjectName("headline")
+        self.news = QTextBrowser(content)
+        self.news.setObjectName("news")
+        self.news.setHtml('<p style="opacity:0.9;font-style:italic;text-align:center;margin-top:40%;color:#ffffff;">ℹ️ Aquí aparecerán las noticias y changelogs de Minecraft…</p>')
+        self.news.installEventFilter(self)
+        cv.addWidget(self.headline)
+        cv.addWidget(self.news, 1)
+        main_lay.addWidget(sidebar)
+        main_lay.addWidget(content, 1)
         main.setParent(root)
         self.play_dock = PlayDock(root)
         self.modal = ModalOverlay(root)
         self.loading = LoadingOverlay(root)
         self._launch_thread: Optional[QThread] = None
         self._launch_worker: Optional[QObject] = None
-        self.rpc = DiscordRPC(); self.rpc.start(); self.rpc.set_browsing()
+        self.rpc = DiscordRPC()
+        self.rpc.start()
+        self.rpc.set_browsing()
         self.tray = QSystemTrayIcon(QIcon(str(ASSETS["icon"])), self)
         tray_menu = QMenu()
         act_restore = QAction("Mostrar", self)
@@ -555,21 +625,38 @@ class GWLauncher(QMainWindow):
         self.tray.setContextMenu(tray_menu)
         self.tray.activated.connect(lambda r: self.showNormal() if r == QSystemTrayIcon.Trigger else None)
         self.tray.show()
-        self.btn_new.clicked.connect(self._create_profile); self.btn_edit.clicked.connect(lambda: self._open_editor(self._current_profile_name())); self.profiles.itemDoubleClicked.connect(lambda _: self._launch()); self.play_dock.btn.clicked.connect(self._launch)
-        self._relayout(); self._stacking_order()
-        self._profiles: Dict[str,Any] = self._load_profiles(); self._refresh_list()
+        self.btn_new.clicked.connect(self._create_profile)
+        self.btn_edit.clicked.connect(lambda: self._open_editor(self._current_profile_name()))
+        self.profiles.itemDoubleClicked.connect(lambda _: self._launch())
+        self.play_dock.btn.clicked.connect(self._launch)
+        self._relayout()
+        self._stacking_order()
+        self._profiles: Dict[str, Any] = self._load_profiles()
+        if "GatitosWorld ModPack" not in self._profiles:
+            self._profiles["GatitosWorld ModPack"] = {
+                "name_locked": True,
+                "username": "",
+                "version": "1.21.1",
+                "modloader": "fabric",
+                "ram": 4096,
+                "jvmFlags": [],
+                "server": "na37.holy.gg",
+                "port": 19431
+            }
+            self._save_profiles()
+        self._refresh_list()
         self._set_play_ready(False)
         self._refresh_versions_async()
 
     def _rpc_set_ip(self):
         try:
             if hasattr(self.rpc, "set_state"):
-                self.rpc.set_state("IP: play.gatitosworld.com")
+                self.rpc.set_state("IP: na37.holy.gg")
             elif hasattr(self.rpc, "update"):
-                self.rpc.update(state="IP: play.gatitosworld.com")
+                self.rpc.update(state="IP: na37.holy.gg")
             elif hasattr(self.rpc, "set_minecraft"):
                 try:
-                    self.rpc.set_minecraft("IP: play.gatitosworld.com")
+                    self.rpc.set_minecraft("IP: na37.holy.gg")
                 except TypeError:
                     self.rpc.set_minecraft()
             else:
@@ -673,6 +760,9 @@ class GWLauncher(QMainWindow):
             pass
 
     def _delete_profile(self, name: str):
+        if name == "GatitosWorld ModPack":
+            QMessageBox.information(self, "Perfil protegido", "Este perfil no se puede borrar.")
+            return
         if name in self._profiles:
             inst = self._instance_path_for(name)
             del self._profiles[name]
@@ -774,18 +864,30 @@ class GWLauncher(QMainWindow):
             QMessageBox.warning(self, "Perfil no encontrado", "No se pudo cargar el perfil seleccionado.")
             return
 
-        version = p.get("version",""); username = p.get("username") or "Player"
-        ram = int(p.get("ram",2048)); loader = p.get("modloader","vanilla"); jvm = p.get("jvmFlags",[])
+        if name == "GatitosWorld ModPack" and not p.get("username"):
+            username, ok = QInputDialog.getText(self, "Nombre de usuario", "Ingresa tu username de Minecraft:")
+            if not ok or not username.strip():
+                QMessageBox.warning(self, "Falta username", "Debes ingresar un username para jugar.")
+                return
+            p["username"] = username.strip()
+            self._profiles[name] = p
+            self._save_profiles()
+
+        version = p.get("version", "")
+        username = p.get("username") or "Player"
+        ram = int(p.get("ram", 2048))
+        loader = p.get("modloader", "vanilla")
+        jvm = p.get("jvmFlags", [])
 
         self.loading.start("Preparando el lanzamiento…")
         self._set_play_ready(False)
 
         self._launch_thread = QThread(self)
-        self._launch_worker = GWLauncher.LaunchWorker(version, username, loader, ram, jvm, GW_DIR)
+        self._launch_worker = GWLauncher.LaunchWorker(version, username, loader, ram, jvm, GW_DIR, name)
         self._launch_worker.moveToThread(self._launch_thread)
         self._launch_worker.progress.connect(self.loading.set_progress)
         self._launch_worker.finished_err.connect(self._on_launch_error)
-        self._launch_worker.ready_to_launch.connect(self._start_process)  # ⬅ NUEVO
+        self._launch_worker.ready_to_launch.connect(self._start_process)
         self._launch_thread.started.connect(self._launch_worker.run)
         self._launch_thread.start()
 
