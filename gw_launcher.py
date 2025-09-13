@@ -1,4 +1,4 @@
-#gw_launcher.py
+# gw_launcher.py
 from __future__ import annotations
 import json, math, os, random, sys, threading, shutil
 from datetime import date
@@ -6,10 +6,11 @@ from pathlib import Path
 from discord_rpc import DiscordRPC
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Dict, Any
-from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread, QProcess
-from PySide6.QtGui import QFont, QGuiApplication, QPainter, QPixmap, QTransform, QColor, QPainterPath, QLinearGradient, QRadialGradient, QBrush, QIcon, QAction
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu, QInputDialog
+from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread, QProcess, QUrl
+from PySide6.QtGui import QFont, QGuiApplication, QPainter, QPixmap, QTransform, QColor, QPainterPath, QLinearGradient, QRadialGradient, QBrush, QIcon, QAction, QDesktopServices
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu, QInputDialog, QCheckBox, QSizePolicy
 from PySide6.QtCore import QSharedMemory
+from functools import lru_cache
 
 def _bundle_base() -> Path:
     base = getattr(sys, "_MEIPASS", None)
@@ -28,12 +29,17 @@ ASSETS = {
     "leaf": BASE_DIR / "assets/leaf.png",
     "snow": BASE_DIR / "assets/snow.png",
     "sunflower": BASE_DIR / "assets/sunflower.png",
-    "icon": BASE_DIR / "assets/icon.ico"
+    "icon": BASE_DIR / "assets/icon.ico",
+    "login": BASE_DIR / "assets/login.png"
 }
 
-def load_pixmap(path: os.PathLike | str) -> QPixmap:
-    pm = QPixmap(str(path))
+@lru_cache(maxsize=64)
+def _cached_pm(path_str: str) -> QPixmap:
+    pm = QPixmap(path_str)
     return pm if not pm.isNull() else QPixmap()
+
+def load_pixmap(path: os.PathLike | str) -> QPixmap:
+    return _cached_pm(str(path))
 
 def current_season_sprite() -> QPixmap:
     m = date.today().month
@@ -79,7 +85,7 @@ class OverlayImages(QWidget):
             self.cat_world.setPixmap(pm2); self.cat_world.resize(pm2.size())
             self.cat_world.move(int(w * 0.02), int(h * 0.80 - self.cat_world.height()))
 
-@dataclass
+@dataclass(slots=True)
 class Particle:
     pos: QPointF; vy: float; base_x: float; sway_amp: float; sway_freq: float; angle: float; ang_vel: float; scale: float
 
@@ -87,95 +93,294 @@ class ParticleLayer(QWidget):
     def __init__(self, parent=None, count=12):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.sprite = current_season_sprite(); self.particles: List[Particle] = []; self.t = 0.0; self._pending_count = count; self._initialized = False
-        self.timer = QTimer(self); self.timer.timeout.connect(self._tick); self.timer.start(33)
+        self.sprite = current_season_sprite()
+        self.particles: List[Particle] = []
+        self.t = 0.0
+        self._pending_count = count
+        self._initialized = False
+        self.timer = QTimer(self)
+        self.timer.setTimerType(Qt.PreciseTimer)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(33)
+
     def resizeEvent(self, e):
         super().resizeEvent(e)
         if not self._initialized and self.width() > 0 and self.height() > 0:
-            self._init_particles(self._pending_count); self._initialized = True
+            self._init_particles(self._pending_count)
+            self._initialized = True
+
     def _rand_particle(self) -> Particle:
         w, h = max(self.width(), 1), max(self.height(), 1)
         x = random.uniform(0, w); y = random.uniform(-h * 0.5, -20); vy = random.uniform(30, 70) / 100.0
-        sway_amp = random.uniform(15, 45); sway_freq = random.uniform(0.25, 0.6); angle = random.uniform(0, 360); ang_vel = random.uniform(-40, 40) / 10.0; scale = random.uniform(0.35, 0.7)
+        sway_amp = random.uniform(15, 45); sway_freq = random.uniform(0.25, 0.6)
+        angle = random.uniform(0, 360); ang_vel = random.uniform(-40, 40) / 10.0
+        scale = random.uniform(0.35, 0.7)
         return Particle(QPointF(x, y), vy, x, sway_amp, sway_freq, angle, ang_vel, scale)
-    def _init_particles(self, count): self.particles = [self._rand_particle() for _ in range(count)]
+
+    def _init_particles(self, count):
+        self.particles = [self._rand_particle() for _ in range(count)]
+
     def _tick(self):
-        self.t += 0.033; w, h = self.width(), self.height()
-        if w <= 0 or h <= 0: return
+        self.t += 0.033
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return
         for p in self.particles:
             p.pos.setY(p.pos.y() + p.vy * 10)
             sway = p.sway_amp * math.sin(self.t * p.sway_freq + p.base_x * 0.01)
-            p.pos.setX(p.base_x + sway); p.angle = (p.angle + p.ang_vel) % 360
+            p.pos.setX(p.base_x + sway)
+            p.angle = (p.angle + p.ang_vel) % 360
             if p.pos.y() > h + 40:
                 np = self._rand_particle()
-                p.pos, p.vy, p.base_x, p.sway_amp, p.sway_freq, p.angle, p.ang_vel, p.scale = np.pos, np.vy, np.base_x, np.sway_amp, np.sway_freq, np.angle, np.ang_vel, np.scale
-            if p.pos.x() < -60 or p.pos.x() > w + 60: p.base_x = random.uniform(0, w)
+                p.pos, p.vy, p.base_x, p.sway_amp, p.sway_freq, p.angle, p.ang_vel, p.scale = \
+                    np.pos, np.vy, np.base_x, np.sway_amp, np.sway_freq, np.angle, np.ang_vel, np.scale
+            if p.pos.x() < -60 or p.pos.x() > w + 60:
+                p.base_x = random.uniform(0, w)
         self.update()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if not self.timer.isActive():
+            self.timer.start(33)
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        if self.timer.isActive():
+            self.timer.stop()
+
+    def setActive(self, on: bool):
+        if on and not self.timer.isActive():
+            self.timer.start(33)
+        elif not on and self.timer.isActive():
+            self.timer.stop()
+
     def paintEvent(self, e):
-        if self.sprite.isNull(): return
-        painter = QPainter(self); painter.setRenderHint(QPainter.SmoothPixmapTransform); sw = self.sprite.width()
+        if self.sprite.isNull():
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        sw, sh = self.sprite.width(), self.sprite.height()
+        pm = self.sprite
         for p in self.particles:
-            s = max(8, int(sw * p.scale)); pm = self.sprite.scaledToWidth(s, Qt.SmoothTransformation)
-            transform = QTransform(); transform.translate(p.pos.x(), p.pos.y()); transform.rotate(p.angle); transform.translate(-pm.width() / 2, -pm.height() / 2)
-            painter.setTransform(transform); painter.setOpacity(0.9); painter.drawPixmap(0, 0, pm)
-        painter.resetTransform()
+            painter.save()
+            painter.translate(p.pos)
+            painter.rotate(p.angle)
+            painter.scale(p.scale, p.scale)
+            painter.setOpacity(0.9)
+            painter.drawPixmap(-sw / 2, -sh / 2, pm)
+            painter.restore()
 
 class ModalOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#overlay {{ background: rgba(0,0,0,0.6); }} QFrame#box {{ background: #151738; color: #ffffff; border-radius: 8px; padding: 16px; }} QLabel#title {{ color: #ffffff; font-weight: 700; font-size: 18px; margin-bottom: 8px; }} QTextBrowser#content {{ background: #272822; color: #ffffff; border-radius: 4px; padding: 8px; font-family: monospace; }} QPushButton.modal-btn {{ padding: 6px 12px; border: 0; border-radius: 4px; background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); color: #ffffff; }} QPushButton.modal-btn:hover {{ filter: brightness(1.1); }}")
-        self.setObjectName("overlay"); self.hide()
-        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)
-        self._center = QWidget(self); lay_center = QVBoxLayout(self._center); lay_center.setAlignment(Qt.AlignCenter)
-        self.box = QFrame(self._center); self.box.setObjectName("box"); self.box.setMaximumWidth(560)
+        self.setStyleSheet(
+            "QWidget#overlay { background: rgba(0,0,0,0.6); } "
+            "QFrame#box { background: #151738; color: #ffffff; border-radius: 8px; padding: 12px; } "
+            "QLabel#title { color: #ffffff; font-weight: 700; font-size: 16px; margin-bottom: 6px; } "
+            "QLabel#text { color: #ffffff; font-size: 14px; } "
+            "QTextBrowser#content { background: #272822; color: #ffffff; border-radius: 4px; padding: 8px; font-family: monospace; } "
+            "QLabel#msg { color: #ff5555; font-size: 14px; margin: 4px 0; } "
+            "QPushButton#modal-btn { padding: 6px 12px; border: 0; border-radius: 4px; "
+            "background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); color: #ffffff; } "
+            "QPushButton#modal-btn:hover { opacity: 0.9; }"
+        )
+        self.setObjectName("overlay")
+        self.hide()
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self._center = QWidget(self)
+        lay_center = QVBoxLayout(self._center)
+        lay_center.setAlignment(Qt.AlignCenter)
+        self.box = QFrame(self._center)
+        self.box.setObjectName("box")
+        self.box.setMaximumWidth(360)
         v = QVBoxLayout(self.box)
-        self.title = QLabel("Título", self.box); self.title.setObjectName("title")
-        self._stack = QWidget(self.box); self._stack_lay = QVBoxLayout(self._stack); self._stack_lay.setContentsMargins(0,0,0,0)
-        self.content = QTextBrowser(self.box); self.content.setObjectName("content"); self.content.hide()
-        self.buttons = QWidget(self.box); self.buttons.setObjectName("buttons")
-        self.buttons_lay = QHBoxLayout(self.buttons); self.buttons_lay.setContentsMargins(0, 8, 0, 0); self.buttons_lay.setSpacing(8); self.buttons_lay.setAlignment(Qt.AlignRight)
-        v.addWidget(self.title); v.addWidget(self._stack); v.addWidget(self.content); v.addWidget(self.buttons)
-        lay_center.addWidget(self.box); lay.addWidget(self._center)
+        v.setContentsMargins(12, 12, 12, 12)
+        v.setSpacing(4)
+
+        self.title = QLabel("Título", self.box)
+        self.title.setObjectName("title")
+
+        self._stack = QWidget(self.box)
+        self._stack_lay = QVBoxLayout(self._stack)
+        self._stack_lay.setContentsMargins(0, 0, 0, 0)
+
+        self.text = QLabel(self.box)
+        self.text.setObjectName("text")
+        self.text.setWordWrap(True)
+        self.text.setAlignment(Qt.AlignCenter)
+        self.text.hide()
+
+        self.content = QTextBrowser(self.box)
+        self.content.setObjectName("content")
+        self.content.hide()
+
+        from PySide6.QtWidgets import QSizePolicy
+        self.msg_label = QLabel(self.box)
+        self.msg_label.setObjectName("msg")
+        self.msg_label.setWordWrap(False)
+        self.msg_label.setAlignment(Qt.AlignCenter)
+        self.msg_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.msg_label.setMaximumHeight(22)
+        self.msg_label.hide()
+
+        self.buttons = QWidget(self.box)
+        self.buttons.setObjectName("buttons")
+        self.buttons_lay = QHBoxLayout(self.buttons)
+        self.buttons_lay.setContentsMargins(0, 4, 0, 0)
+        self.buttons_lay.setSpacing(8)
+        self.buttons_lay.setAlignment(Qt.AlignRight)
+
+        v.addWidget(self.title)
+        v.addWidget(self._stack)
+        v.addWidget(self.text)
+        v.addWidget(self.content)
+        v.addWidget(self.msg_label)
+        v.addWidget(self.buttons)
+
+        lay_center.addWidget(self.box)
+        lay.addWidget(self._center)
+
         self._current_form: Optional[QWidget] = None
-    def resizeEvent(self, e): self._center.setFixedSize(self.size())
-    def show_modal(self, title: str, html_or_text: str, buttons: List[tuple[str, Callable]]):
-        self.clear_form(); self.title.setText(title)
-        if "<" in html_or_text and ">" in html_or_text: self.content.setHtml(html_or_text)
-        else: self.content.setPlainText(html_or_text)
-        self.content.show(); self._rebuild_buttons(buttons); self.show(); self.raise_()
-    def show_form(self, title: str, form: QWidget, buttons: List[tuple[str, Callable]]):
-        self.clear_form(); self.title.setText(title); self.content.hide(); self._current_form = form; self._stack_lay.addWidget(form); self._rebuild_buttons(buttons); self.show(); self.raise_()
+        self._on_dismiss: Optional[Callable] = None
+
     def _rebuild_buttons(self, buttons: List[tuple[str, Callable]]):
+        if not buttons:
+            buttons = [("Cerrar", self.hide_modal)]
+
         while self.buttons_lay.count():
             w = self.buttons_lay.takeAt(0).widget()
-            if w: w.deleteLater()
+            if w:
+                w.deleteLater()
+
         for text, cb in buttons:
-            b = QPushButton(text, self); b.setProperty("class", "modal-btn"); b.setObjectName("modal-btn")
-            b.setCursor(Qt.PointingHandCursor); b.clicked.connect(cb); self.buttons_lay.addWidget(b)
+            b = QPushButton(text, self.buttons)
+            b.setObjectName("modal-btn")
+            b.setProperty("class", "modal-btn")
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, fn=cb: fn())
+            self.buttons_lay.addWidget(b)
+        self.buttons.show()
+
+    def request_close(self):
+        if self._on_dismiss is not None:
+            cb = self._on_dismiss
+            self._on_dismiss = None
+            try:
+                cb()
+            except Exception:
+                pass
+        else:
+            self.hide_modal()
+
+    def mousePressEvent(self, e):
+        if not self.box.geometry().contains(e.position().toPoint()):
+            self.request_close()
+        else:
+            super().mousePressEvent(e)
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key_Escape, Qt.Key_Return, Qt.Key_Enter):
+            self.request_close()
+        else:
+            super().keyPressEvent(e)
+
     def clear_form(self):
         if self._current_form:
-            self._current_form.setParent(None); self._current_form.deleteLater(); self._current_form = None
-    def hide_modal(self): self.clear_form(); self.hide()
+            self._current_form.setParent(None)
+            self._current_form.deleteLater()
+            self._current_form = None
+        self._on_dismiss = None
+
+    def hide_modal(self):
+        self.clear_form()
+        self.hide()
+
+    def show_modal_2(self, title: str, message: str, buttons: List[tuple[str, Callable]], on_dismiss: Optional[Callable] = None):
+        self.clear_form()
+        self._on_dismiss = on_dismiss
+        self.title.setText(title)
+        self.text.setText(message)
+        self.text.show()
+        self.content.hide()
+        self.msg_label.hide()
+        self._rebuild_buttons(buttons)
+        self.show()
+        self.raise_()
+
+    def show_modal(self, title: str, html_or_text: str, buttons: List[tuple[str, Callable]], on_dismiss: Optional[Callable] = None):
+        self.clear_form()
+        self._on_dismiss = on_dismiss
+        self.title.setText(title)
+        if "<" in html_or_text and ">" in html_or_text:
+            self.content.setHtml(html_or_text)
+            self.content.show()
+            self.msg_label.hide()
+            self.text.hide()
+        else:
+            self.msg_label.setText(html_or_text)
+            self.msg_label.show()
+            self.content.hide()
+            self.text.hide()
+        self._rebuild_buttons(buttons)
+        self.show()
+        self.raise_()
+
+    def show_form(self, title: str, form: QWidget, buttons: List[tuple[str, Callable]], on_dismiss: Optional[Callable] = None):
+        self.clear_form()
+        self._on_dismiss = on_dismiss
+        self.title.setText(title)
+        self.content.hide()
+        self.msg_label.hide()
+        self.text.hide()
+        self._current_form = form
+        self._stack_lay.addWidget(form)
+        self._rebuild_buttons(buttons)
+        self.show()
+        self.raise_()
 
 class TitleBar(QWidget):
     def __init__(self, parent: QMainWindow):
         super().__init__(parent)
-        self.setFixedHeight(32); self.setAttribute(Qt.WA_StyledBackground, True); self.setStyleSheet("background: transparent;")
-        lay = QHBoxLayout(self); lay.setContentsMargins(8, 0, 8, 0); lay.addStretch(1)
-        self.btn_min = QPushButton("─", self); self.btn_close = QPushButton("✕", self)
-        for b in (self.btn_min, self.btn_close):
-            b.setFixedSize(40, 28); b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet(f"QPushButton {{ border: 0; background: transparent; color: {PALETTE['fg']}; font-size: 16px; }} QPushButton:hover {{ background: rgba(255,255,255,0.1); }}")
-        self.btn_close.setStyleSheet(f"QPushButton {{ border: 0; background: transparent; color: {PALETTE['fg']}; font-size: 16px; }} QPushButton:hover {{ background: #e81123; }}")
-        self.btn_min.clicked.connect(parent.showMinimized); self.btn_close.clicked.connect(parent.close)
-        lay.addWidget(self.btn_min); lay.addWidget(self.btn_close); self._drag_pos: Optional[QPoint] = None
-    def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton: self._drag_pos = e.globalPosition().toPoint()
-    def mouseMoveEvent(self, e):
-        if self._drag_pos is not None:
-            delta = e.globalPosition().toPoint() - self._drag_pos; self.window().move(self.window().pos() + delta); self._drag_pos = e.globalPosition().toPoint()
-    def mouseReleaseEvent(self, e): self._drag_pos = None
+        self.setFixedHeight(32)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 0, 8, 0)
+        lay.addStretch(1)
+        self.btn_login = QPushButton(self)
+        self.btn_min = QPushButton("─", self)
+        self.btn_close = QPushButton("✕", self)
+        self.lbl_login_status = QLabel("Iniciar sesión con Mojang", self)
+        self.lbl_login_status.setStyleSheet(f"color:{PALETTE['fg']}; font-size:13px; margin-left:4px;")
+        for b in (self.btn_login, self.btn_min, self.btn_close):
+            b.setFixedHeight(28)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet(
+                f"QPushButton {{ border: 0; background: transparent; color: {PALETTE['fg']}; font-size: 16px; }}"
+                f"QPushButton:hover {{ background: rgba(255,255,255,0.1); }}"
+            )
+        self.btn_login.setFixedWidth(36)
+        icon_login = QIcon(str(ASSETS["login"])) if Path(ASSETS["login"]).exists() else None
+        if icon_login:
+            self.btn_login.setIcon(icon_login)
+        else:
+            self.btn_login.setText("👤")
+        self.btn_close.setStyleSheet(
+            f"QPushButton {{ border: 0; background: transparent; color: {PALETTE['fg']}; font-size: 16px; }}"
+            f"QPushButton:hover {{ background: #e81123; }}"
+        )
+        self.btn_min.setFixedWidth(40)
+        self.btn_close.setFixedWidth(40)
+        self.btn_min.clicked.connect(parent.showMinimized)
+        self.btn_close.clicked.connect(parent.close)
+        self.btn_login.clicked.connect(getattr(parent, "_open_login", lambda: None))
+        lay.addWidget(self.btn_login)
+        lay.addWidget(self.lbl_login_status)
+        lay.addWidget(self.btn_min)
+        lay.addWidget(self.btn_close)
+        self._drag_pos: Optional[QPoint] = None
 
 def _read_json(p: Path, default: Any) -> Any:
     if not p.exists(): return default
@@ -247,12 +452,13 @@ def _recommended_flags(version: str, modloader: str) -> List[str]:
 class EditorForm(QWidget):
     def __init__(self, existing_names: List[str], profile: Optional[Dict[str,Any]]=None):
         super().__init__()
+        from PySide6.QtWidgets import QCheckBox
         up_path = (BASE_DIR / "assets" / "arriba.png").as_posix()
         down_path = (BASE_DIR / "assets" / "abajo.png").as_posix()
         self.setStyleSheet(
-            f".wrap{{background:#0f1027;border-radius:12px;padding:16px}}"
-            f" QLabel, QLineEdit, QTextEdit, QComboBox, QSpinBox{{color:#fff;font-size:14px}}"
-            f" QLineEdit,QTextEdit{{background:transparent;border:0;}}"
+            f"QLabel, QLineEdit, QTextEdit, QComboBox, QSpinBox, QCheckBox{{color:#fff;font-size:14px}}"
+            f" QLineEdit{{background:#0f1027;border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:6px;color:#fff;}}"
+            f" QTextEdit{{background:transparent;border:0;}}"
             f" QPushButton.reco{{border:0;border-radius:12px;padding:10px;background:{PALETTE['primary']};color:#fff;font-weight:600}}"
             f" QPushButton.reco:hover{{background:{PALETTE['primary_hov']}}}"
             f" QComboBox{{background:#0f1027;border-radius:8px;padding:8px}}"
@@ -266,25 +472,32 @@ class EditorForm(QWidget):
             f" .warn{{color:#ffb4b4}}"
         )
         grid = QGridLayout(self); grid.setVerticalSpacing(12); grid.setHorizontalSpacing(10)
+
         self.name = QLineEdit(); self.name.setPlaceholderText("Nombre del perfil")
-        self.username = QLineEdit(); self.username.setPlaceholderText("Username")
+        self.chk_ms = QCheckBox("Iniciar con cuenta oficial de Microsoft")
+        self.username = QLineEdit(); self.username.setPlaceholderText("Username de Minecraft")
         self.version = QComboBox(); self.version.setMinimumWidth(320)
         self.ram = QSpinBox(); self.ram.setRange(512, 65536); self.ram.setSingleStep(1024); self.ram.setAccelerated(True); self.ram.setSuffix(" MiB"); self.ram.setFixedHeight(36)
         self.jvm = QTextEdit(); self.jvm.setPlaceholderText("JVM flags (espacio-separadas)")
         self.btnReco = QPushButton("Flags recomendadas"); self.btnReco.setProperty("class","reco")
         self.warn = QLabel(); self.warn.setObjectName("warn")
+
         grid.addWidget(self._row("Nombre de perfil", self.name),0,0,1,2)
-        grid.addWidget(self._row("Username", self.username),1,0,1,2)
-        grid.addWidget(self._row("Versión", self.version),2,0,1,2)
-        grid.addWidget(self._row("RAM", self.ram),3,0,1,2)
-        grid.addWidget(self._row("JVM Flags", self.jvm),4,0,1,2)
-        grid.addWidget(self.btnReco,5,0,1,1); grid.addWidget(self.warn,5,1,1,1)
+        grid.addWidget(self.chk_ms,1,0,1,2)
+        self.username_row = self._row("Username", self.username)
+        grid.addWidget(self.username_row,2,0,1,2)
+        grid.addWidget(self._row("Versión", self.version),3,0,1,2)
+        grid.addWidget(self._row("RAM", self.ram),4,0,1,2)
+        grid.addWidget(self._row("JVM Flags", self.jvm),5,0,1,2)
+        grid.addWidget(self.btnReco,6,0,1,1); grid.addWidget(self.warn,6,1,1,1)
+
         self._existing = set(existing_names); self._versions = _load_versions()
         self.version.addItem("Selecciona una versión", userData={"version":"","modloader":""})
         for it in self._versions:
             label = it["version"] if it["modloader"]=="vanilla" else f"{it['version']} ({it['modloader']})"
             self.version.addItem(label, userData=it)
         self.ram.setValue(2048)
+
         self.name.setText(profile.get("name","") if profile else "")
         if profile and profile.get("name_locked"): self.name.setEnabled(False)
         self.username.setText(profile.get("username","") if profile else "")
@@ -296,6 +509,14 @@ class EditorForm(QWidget):
                 if d and d.get("version")==sel_ver and d.get("modloader")==sel_mod: self.version.setCurrentIndex(i); break
         if profile: self.ram.setValue(int(profile.get("ram", 2048)))
         self.jvm.setPlainText(" ".join(profile.get("jvmFlags",[])) if profile else "")
+        auth_mode = (profile.get("auth","offline") if profile else "offline")
+        self.chk_ms.setChecked(auth_mode == "microsoft")
+
+        def toggle_username():
+            self.username_row.setVisible(not self.chk_ms.isChecked())
+        toggle_username()
+        self.chk_ms.stateChanged.connect(lambda _: toggle_username())
+
         def on_change_version():
             cur = self.jvm.toPlainText().strip().split()
             equal8 = cur==RECOMMENDED[8]; equal17 = cur==RECOMMENDED[17]; equal21 = cur==RECOMMENDED[21]
@@ -303,6 +524,7 @@ class EditorForm(QWidget):
             rec = _recommended_flags(d.get("version",""), d.get("modloader",""))
             if equal8 or equal17 or equal21: self.jvm.setPlainText(" ".join(rec))
         self.version.currentIndexChanged.connect(on_change_version)
+
         def on_reco():
             d = self.version.currentData() or {"version":"","modloader":""}
             v = d.get("version","")
@@ -313,7 +535,9 @@ class EditorForm(QWidget):
     def _row(self, label: str, control: QWidget) -> QWidget:
         w = QWidget(); lay = QVBoxLayout(w); lay.setContentsMargins(0,0,0,0); lay.setSpacing(4)
         tl = QLabel(label); tl.setStyleSheet("opacity:.8;font-size:12px;color:#fff")
-        box = QFrame(); box.setObjectName("wrap"); box.setProperty("class","wrap"); bl = QVBoxLayout(box); bl.setContentsMargins(12,8,12,8); bl.setSpacing(4); bl.addWidget(control)
+        box = QFrame(); box.setObjectName("wrap")
+        box.setStyleSheet("QFrame#wrap{background:rgba(255,255,255,0.05);border-radius:8px;}")
+        bl = QVBoxLayout(box); bl.setContentsMargins(12,8,12,8); bl.setSpacing(4); bl.addWidget(control)
         lay.addWidget(tl); lay.addWidget(box)
         return w
 
@@ -326,7 +550,8 @@ class EditorForm(QWidget):
         if not version: self.warn.setText("Selecciona una versión"); return None
         ram = max(2048, int(self.ram.value()))
         jvm = [s for s in self.jvm.toPlainText().strip().split() if s]
-        return {"name": name, "username": self.username.text().strip(), "version": version, "modloader": modloader, "ram": ram, "jvmFlags": jvm}
+        auth = "microsoft" if self.chk_ms.isChecked() else "offline"
+        return {"name": name, "username": self.username.text().strip(), "version": version, "modloader": modloader, "ram": ram, "jvmFlags": jvm, "auth": auth}
 
 class GlowPlayButton(QPushButton):
     def __init__(self, text="▶ PLAY", parent=None):
@@ -411,19 +636,43 @@ class LoadingOverlay(QWidget):
             "#box{background: rgba(21,23,56,0.9); border-radius: 16px; padding: 24px;} "
             "#percent{color:#fff; font-size:42px; font-weight:800;} "
             "#label{color:#ffffff; font-size:14px; opacity:0.9;} "
-            "QProgressBar{background: rgba(255,255,255,0.08); border: 0; border-radius: 10px; height: 18px; text-visible: false;} "
+            "QProgressBar{background: rgba(255,255,255,0.08); border: 0; border-radius: 10px; height: 18px;} "
             "QProgressBar::chunk{background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); border-radius: 10px;}"
         )
-        lay = QVBoxLayout(self); lay.setContentsMargins(0,0,0,0); lay.setSpacing(0)
-        center = QWidget(self); cl = QVBoxLayout(center); cl.setAlignment(Qt.AlignCenter)
-        box = QFrame(center); box.setObjectName("box")
-        bl = QVBoxLayout(box); bl.setSpacing(12)
-        self.lbl_percent = QLabel("0%", box); self.lbl_percent.setObjectName("percent"); self.lbl_percent.setAlignment(Qt.AlignHCenter)
-        self.lbl_text = QLabel("Inicializando…", box); self.lbl_text.setObjectName("label"); self.lbl_text.setAlignment(Qt.AlignHCenter)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0,0,0,0)
+        lay.setSpacing(0)
+
+        center = QWidget(self)
+        cl = QVBoxLayout(center)
+        cl.setAlignment(Qt.AlignCenter)
+
+        box = QFrame(center)
+        box.setObjectName("box")
+        bl = QVBoxLayout(box)
+        bl.setSpacing(12)
+
+        self.lbl_percent = QLabel("0%", box)
+        self.lbl_percent.setObjectName("percent")
+        self.lbl_percent.setAlignment(Qt.AlignHCenter)
+
+        self.lbl_text = QLabel("Inicializando…", box)
+        self.lbl_text.setObjectName("label")
+        self.lbl_text.setAlignment(Qt.AlignHCenter)
+
         from PySide6.QtWidgets import QProgressBar
-        self.bar = QProgressBar(box); self.bar.setRange(0,100); self.bar.setValue(0)
-        bl.addWidget(self.lbl_percent); bl.addWidget(self.lbl_text); bl.addWidget(self.bar)
-        cl.addWidget(box); lay.addWidget(center)
+        self.bar = QProgressBar(box)
+        self.bar.setRange(0, 100)
+        self.bar.setValue(0)
+        self.bar.setTextVisible(False)
+
+        bl.addWidget(self.lbl_percent)
+        bl.addWidget(self.lbl_text)
+        bl.addWidget(self.bar)
+
+        cl.addWidget(box)
+        lay.addWidget(center)
     def set_progress(self, percent: int, text: str):
         p = max(0, min(100, int(percent)))
         self.bar.setValue(p)
@@ -456,29 +705,22 @@ class GWLauncher(QMainWindow):
         def run(self):
             try:
                 import gwlauncher_backend as backend
-
                 self.progress.emit(5, "Instalando versión…")
                 backend.install_version(self.version)
-
                 self.progress.emit(20, "Instalando modloader…")
                 ml = "" if self.loader == "vanilla" else (self.loader or "")
                 real_id = backend.install_modloader(ml, self.version) if ml else self.version
-
                 self.progress.emit(40, "Verificando archivos…")
                 backend._wait_for_version(real_id)
-
                 self.progress.emit(55, "Preparando entorno…")
                 instances_dir = getattr(backend, "INSTANCES_DIR", self.gw_dir / "instances")
                 game_dir = instances_dir / f"{real_id}_{self.profile_name}"
                 game_dir.mkdir(parents=True, exist_ok=True)
                 if os.name == "posix":
                     os.chmod(game_dir, 0o755)
-
                 self.progress.emit(65, "Aplicando modpack GatitosWorld…")
                 backend.ensure_modpack(game_dir)
-
                 backend.save_profile(self.username, self.version)
-
                 self.progress.emit(80, "Construyendo comando…")
                 cmd = backend.build_command(
                     real_id,
@@ -491,10 +733,8 @@ class GWLauncher(QMainWindow):
                     port=19431,
                     progress_cb=lambda p, t: self.progress.emit(80 + p // 5, t),
                 )
-
                 self.progress.emit(95, "Listo para lanzar…")
                 self.ready_to_launch.emit(cmd, str(backend.GW_DIR))
-
             except Exception as e:
                 self.finished_err.emit(str(e))
 
@@ -510,6 +750,52 @@ class GWLauncher(QMainWindow):
                 sys.stderr.write(data)
                 sys.stderr.flush()
 
+    class DeviceLoginForm(QWidget):
+        def __init__(self, code: str, url: str):
+            super().__init__()
+            self.setStyleSheet("QLabel{color:#fff} QLineEdit{background:#0f1027;color:#fff;border:0;border-radius:8px;padding:10px} QFrame#wrap{background:#0f1027;border-radius:12px;padding:16px}")
+            v = QVBoxLayout(self); v.setContentsMargins(0,0,0,0); v.setSpacing(10)
+            box = QFrame(); box.setObjectName("wrap")
+            vb = QVBoxLayout(box); vb.setContentsMargins(16,16,16,16); vb.setSpacing(8)
+            lbl1 = QLabel("Código para ingresar en la web:")
+            self.txt_code = QLineEdit(); self.txt_code.setReadOnly(True); self.txt_code.setText(code); self.txt_code.setCursorPosition(0)
+            lbl2 = QLabel("Abre este enlace y pega el código:")
+            self.txt_url = QLineEdit(); self.txt_url.setReadOnly(True); self.txt_url.setText(url); self.txt_url.setCursorPosition(0)
+            vb.addWidget(lbl1); vb.addWidget(self.txt_code); vb.addWidget(lbl2); vb.addWidget(self.txt_url)
+            v.addWidget(box)
+            
+    def _start_rpc(self):
+        try:
+            self.rpc.start()
+            self.rpc.set_browsing()
+        except Exception:
+            pass
+        
+    def _cleanup_ms_login_thread(self, force: bool = False, wait_ms: int = 5000):
+        t = getattr(self, "_ms_login_thread", None)
+        w = getattr(self, "_ms_login_worker", None)
+        if t is None:
+            if w:
+                w.deleteLater()
+                self._ms_login_worker = None
+            return
+        if t.isRunning() and not force:
+            return
+        if t.isRunning() and force:
+            try:
+                t.requestInterruption()
+            except Exception:
+                pass
+            t.quit()
+            if not t.wait(wait_ms):
+                t.terminate()
+                t.wait(200)
+        if w:
+            w.deleteLater()
+            self._ms_login_worker = None
+        t.deleteLater()
+        self._ms_login_thread = None
+        
     def __init__(self):
         super().__init__()
         self.setWindowTitle("GW Launcher")
@@ -548,7 +834,7 @@ class GWLauncher(QMainWindow):
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }} "
             f"QPushButton.side {{ border: 0; border-radius: 12px; padding: 12px; color: #ffffff; font-weight: 600; font-size: 15px; }} "
             f"QPushButton#btnNew {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); }} "
-            f"QPushButton#btnNew:hover {{ filter: brightness(1.1); }} "
+            f"QPushButton#btnNew:hover {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #a855f7, stop:1 #22d3ee); }} "
             f"QPushButton#btnEdit[enabled=\"false\"] {{ background: rgba(147, 51, 234, 0.5); color: #ffffff; }} "
             f"QPushButton#btnEdit[enabled=\"true\"] {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); color: #ffffff; }}"
         )
@@ -558,6 +844,11 @@ class GWLauncher(QMainWindow):
         st = QLabel("Perfiles", sidebar)
         st.setObjectName("sideTitle")
         self.profiles = QListWidget(sidebar)
+        self.profiles.setUniformItemSizes(True)
+        self.profiles.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        from PySide6.QtGui import QIcon
+        self._icon_folder = QIcon((BASE_DIR / "assets" / "folder.png").as_posix())
+        self._icon_trash  = QIcon((BASE_DIR / "assets" / "trash.png").as_posix())
         self.profiles.setObjectName("profiles")
         self.profiles.itemSelectionChanged.connect(self._on_profile_select)
         self.profiles.setSpacing(10)
@@ -611,9 +902,12 @@ class GWLauncher(QMainWindow):
         self.loading = LoadingOverlay(root)
         self._launch_thread: Optional[QThread] = None
         self._launch_worker: Optional[QObject] = None
+        self._ms_login_thread: Optional[QThread] = None
+        self._ms_login_worker: Optional[QObject] = None
+        self._ms_login_cancelled: bool = False
+        self._ms_login_in_progress: bool = False
         self.rpc = DiscordRPC()
-        self.rpc.start()
-        self.rpc.set_browsing()
+        QTimer.singleShot(0, self._start_rpc)
         self.tray = QSystemTrayIcon(QIcon(str(ASSETS["icon"])), self)
         tray_menu = QMenu()
         act_restore = QAction("Mostrar", self)
@@ -647,6 +941,17 @@ class GWLauncher(QMainWindow):
         self._refresh_list()
         self._set_play_ready(False)
         self._refresh_versions_async()
+        from auth_backend import list_accounts
+        self._refresh_login_status()
+
+    def _refresh_login_status(self):
+        from auth_backend import list_accounts
+        accounts = list_accounts()
+        if accounts:
+            acc = next(iter(accounts.values()))
+            self.titlebar.lbl_login_status.setText(acc.get("name", "Jugador"))
+        else:
+            self.titlebar.lbl_login_status.setText("Iniciar sesión con Mojang")
 
     def _rpc_set_ip(self):
         try:
@@ -707,6 +1012,7 @@ class GWLauncher(QMainWindow):
         _write_json(self._profiles_path(), self._profiles)
 
     def _refresh_list(self):
+        self.profiles.setUpdatesEnabled(False)
         self.profiles.clear()
         for name in sorted(self._profiles.keys()):
             item = QListWidgetItem()
@@ -714,13 +1020,18 @@ class GWLauncher(QMainWindow):
             item.setSizeHint(w.sizeHint())
             self.profiles.addItem(item)
             self.profiles.setItemWidget(item, w)
+        self.profiles.setUpdatesEnabled(True)
 
     def _make_profile_item(self, name: str) -> QWidget:
         from PySide6.QtCore import QSize
-        from PySide6.QtGui import QIcon
         card = QFrame()
         card.setObjectName("profileCard")
-        card.setStyleSheet("#profileCard{background: rgba(21,23,56,0.75); border-radius: 10px;} #lblName{font-size:16px; color: #ffffff;} QPushButton.tool{border:0; background: transparent; padding: 0;} QPushButton.tool:hover{filter: brightness(1.2);}")
+        card.setStyleSheet(
+            "#profileCard{background: rgba(21,23,56,0.75); border-radius: 10px;} "
+            "#lblName{font-size:16px; color: #ffffff;} "
+            "QPushButton.tool{border:0; background: transparent; padding: 0; border-radius: 6px;} "
+            "QPushButton.tool:hover{background: rgba(255,255,255,0.08);} "
+        )
         card.setMinimumHeight(48)
         lay = QHBoxLayout(card); lay.setContentsMargins(12, 8, 12, 8); lay.setSpacing(10)
         lbl = QLabel(name, card); lbl.setObjectName("lblName"); lbl.setWordWrap(False)
@@ -732,9 +1043,7 @@ class GWLauncher(QMainWindow):
         btn_folder.setCursor(Qt.PointingHandCursor); btn_trash.setCursor(Qt.PointingHandCursor)
         btn_folder.setFlat(True); btn_trash.setFlat(True)
         btn_folder.setFixedSize(32, 32); btn_trash.setFixedSize(32, 32)
-        icon_folder = QIcon((BASE_DIR / "assets" / "folder.png").as_posix())
-        icon_trash = QIcon((BASE_DIR / "assets" / "trash.png").as_posix())
-        btn_folder.setIcon(icon_folder); btn_trash.setIcon(icon_trash)
+        btn_folder.setIcon(self._icon_folder); btn_trash.setIcon(self._icon_trash)
         btn_folder.setIconSize(QSize(20, 20)); btn_trash.setIconSize(QSize(20, 20))
         btn_folder.clicked.connect(lambda _, n=name: self._open_profile_dir(n))
         btn_trash.clicked.connect(lambda _, n=name: self._delete_profile(n))
@@ -743,6 +1052,20 @@ class GWLauncher(QMainWindow):
         lay.addWidget(btn_folder, 0, Qt.AlignVCenter)
         lay.addWidget(btn_trash, 0, Qt.AlignVCenter)
         return card
+
+    def changeEvent(self, e):
+        from PySide6.QtCore import QEvent
+        super().changeEvent(e)
+        if e.type() == QEvent.WindowStateChange:
+            minimized = bool(self.windowState() & Qt.WindowMinimized)
+            try:
+                self.particles.setActive(not minimized)
+            except Exception:
+                pass
+            try:
+                self.play_dock.btn.setGlowing(self.play_dock.btn.isEnabled() and not minimized)
+            except Exception:
+                pass
 
     def _open_profile_dir(self, name: str):
         p = self._instance_path_for(name)
@@ -863,25 +1186,30 @@ class GWLauncher(QMainWindow):
         if not p:
             QMessageBox.warning(self, "Perfil no encontrado", "No se pudo cargar el perfil seleccionado.")
             return
-
-        if name == "GatitosWorld ModPack" and not p.get("username"):
-            username, ok = QInputDialog.getText(self, "Nombre de usuario", "Ingresa tu username de Minecraft:")
-            if not ok or not username.strip():
-                QMessageBox.warning(self, "Falta username", "Debes ingresar un username para jugar.")
-                return
-            p["username"] = username.strip()
-            self._profiles[name] = p
-            self._save_profiles()
-
         version = p.get("version", "")
-        username = p.get("username") or "Player"
-        ram = int(p.get("ram", 2048))
         loader = p.get("modloader", "vanilla")
+        ram = int(p.get("ram", 2048))
         jvm = p.get("jvmFlags", [])
-
+        if p.get("auth") == "microsoft":
+            from auth_backend import list_accounts
+            accounts = list_accounts()
+            if not accounts:
+                QMessageBox.warning(self, "Cuenta Microsoft", "No tienes ninguna cuenta vinculada. Inicia sesión primero.")
+                return
+            acc = next(iter(accounts.values()))
+            username = acc["name"]
+        else:
+            username = p.get("username") or "Player"
+            if name == "GatitosWorld ModPack" and not p.get("username"):
+                username, ok = QInputDialog.getText(self, "Nombre de usuario", "Ingresa tu username de Minecraft:")
+                if not ok or not username.strip():
+                    QMessageBox.warning(self, "Falta username", "Debes ingresar un username para jugar.")
+                    return
+                p["username"] = username.strip()
+                self._profiles[name] = p
+                self._save_profiles()
         self.loading.start("Preparando el lanzamiento…")
         self._set_play_ready(False)
-
         self._launch_thread = QThread(self)
         self._launch_worker = GWLauncher.LaunchWorker(version, username, loader, ram, jvm, GW_DIR, name)
         self._launch_worker.moveToThread(self._launch_thread)
@@ -904,21 +1232,209 @@ class GWLauncher(QMainWindow):
         proc.setArguments(cmd[1:])
         proc.setWorkingDirectory(cwd)
         proc.setProcessChannelMode(QProcess.MergedChannels)
-
         proc.readyReadStandardOutput.connect(lambda: sys.stdout.write(proc.readAllStandardOutput().data().decode(errors="ignore")))
         proc.readyReadStandardError.connect(lambda: sys.stderr.write(proc.readAllStandardError().data().decode(errors="ignore")))
-
         proc.started.connect(lambda: (self.loading.finish(), self._rpc_set_ip(), self.hide(), self.tray.showMessage("GW Launcher", "Minecraft iniciado", QSystemTrayIcon.Information, 2000)))
         proc.finished.connect(lambda _, __: QApplication.instance().quit())
-
         proc.start()
 
     def show_profiles_json(self):
         html = "<pre>"+json.dumps(self._profiles, indent=2, ensure_ascii=False)+"</pre>"
         self.modal.show_modal("Perfiles", html, [("Cerrar", self.modal.hide_modal)])
 
+    def _open_login(self):
+        from auth_backend import begin_device_login, complete_device_login, _save_accounts, list_accounts
+
+        if self._ms_login_in_progress:
+            try:
+                self.modal.show()
+                self.modal.raise_()
+            except Exception:
+                pass
+            return
+
+        accounts = list_accounts()
+        if accounts:
+            acc = next(iter(accounts.values()))
+            def do_logout():
+                _save_accounts({})
+                self.modal.hide_modal()
+                QMessageBox.information(self, "Cerrar sesión", f"Cerró la sesión de {acc.get('name')}.")
+                self._refresh_login_status()
+            self.modal.show_modal_2(
+                "Cerrar sesión",
+                f"<p style='color:#ff5555;font-weight:bold;'>¿Cerrar sesión <b>{acc.get('name')}</b>?</p>",
+                [("Cancelar", self.modal.hide_modal), ("❌ Cerrar sesión", do_logout)]
+            )
+            return
+
+        try:
+            step = begin_device_login()
+        except Exception as e:
+            QMessageBox.critical(self, "Error de login", str(e))
+            return
+
+        self._ms_login_in_progress = True
+        try:
+            self.titlebar.btn_login.setEnabled(False)
+        except Exception:
+            pass
+
+        form = GWLauncher.DeviceLoginForm(step["user_code"], step["verification_uri"])
+
+        def open_link():
+            QDesktopServices.openUrl(QUrl(step["verification_uri"]))
+
+        class DeviceWorker(QObject):
+            finished = Signal(dict)
+            failed = Signal(str)
+
+            @Slot()
+            def run(self):
+                try:
+                    acc = complete_device_login(step["device_code"], 3, 300)
+                    self.finished.emit(acc)
+                except Exception as ex:
+                    self.failed.emit(str(ex))
+
+        worker = DeviceWorker()
+        th = QThread(self)
+        worker.moveToThread(th)
+        th.setObjectName("MsLoginThread")
+        th.started.connect(worker.run)
+
+        self._ms_login_worker = worker
+        self._ms_login_thread = th
+        
+        def stop_thread():
+            try:
+                th.quit()
+                th.wait(50)
+            except Exception:
+                pass
+            worker.deleteLater()
+            th.deleteLater()
+            
+        def _stop_ms_timers():
+            if hasattr(self, "_ms_login_timer") and self._ms_login_timer.isActive():
+                self._ms_login_timer.stop()
+            if hasattr(self, "_ms_login_progress") and self._ms_login_progress.isActive():
+                self._ms_login_progress.stop()
+
+        self._ms_login_cancelled = False
+        
+        def _thread_quit_and_cleanup():
+            t = self._ms_login_thread
+            if t:
+                try:
+                    t.quit()
+                    t.wait(200)
+                except Exception:
+                    pass
+            self._cleanup_ms_login_thread(force=False)
+            
+        def _finish_ui_common():
+            _stop_ms_timers()
+            self.loading.finish()
+            self._ms_login_in_progress = False
+            try:
+                self.titlebar.btn_login.setEnabled(True)
+            except Exception:
+                pass
+                
+        def on_done(acc: dict):
+            def ui_update():
+                _finish_ui_common()
+
+                if not self._ms_login_cancelled:
+                    data = {acc["id"]: acc}
+                    _save_accounts(data)
+
+                    sel = self._current_profile_name()
+                    if sel and sel in self._profiles and not self._profiles[sel].get("username"):
+                        self._profiles[sel]["username"] = acc.get("name", "")
+                        self._save_profiles()
+                        self._refresh_list()
+
+                    self.modal.hide_modal()
+                    self._refresh_login_status()
+                    self._set_play_ready(len(self.profiles.selectedItems()) > 0)
+                    try:
+                        self.tray.showMessage(
+                            "GW Launcher",
+                            f"Sesión iniciada como {acc.get('name','')}",
+                            QSystemTrayIcon.Information,
+                            2000
+                        )
+                    except Exception:
+                        pass
+                _thread_quit_and_cleanup()
+            QTimer.singleShot(0, ui_update)
+
+        def on_fail(msg: str):
+            def ui_update():
+                _finish_ui_common()
+
+                if not self._ms_login_cancelled:
+                    self.modal.show_modal_2(
+                        "Error de login",
+                        msg,
+                        [("Cerrar", self.modal.hide_modal)]
+                    )
+
+                _thread_quit_and_cleanup()
+
+            QTimer.singleShot(0, ui_update)
+
+        worker.finished.connect(on_done)
+        worker.failed.connect(on_fail)
+
+        timeout_s = 300
+        self.loading.start("Iniciando sesión con Microsoft…")
+        th.start()
+
+        self._ms_login_timer = QTimer(self)
+        self._ms_login_timer.setSingleShot(True)
+        self._ms_login_timer.timeout.connect(lambda: on_fail("Tiempo de espera agotado (5 min). Intenta de nuevo."))
+        self._ms_login_timer.start(timeout_s * 1000)
+
+        self._ms_login_elapsed = 0
+        
+        def tick_progress():
+            self._ms_login_elapsed += 1
+            percent = int(min(self._ms_login_elapsed / timeout_s, 1) * 100)
+            self.loading.set_progress(percent, "Esperando confirmación de Microsoft…")
+            if self._ms_login_elapsed >= timeout_s:
+                self._ms_login_progress.stop()
+
+        self._ms_login_progress = QTimer(self)
+        self._ms_login_progress.timeout.connect(tick_progress)
+        self._ms_login_progress.start(1000)
+        
+        def on_cancel():
+            self._ms_login_cancelled = True
+            _finish_ui_common()
+            self.modal.hide_modal()
+            
+        self.modal.show_form(
+            "Iniciar sesión con Microsoft",
+            form,
+            [("Enlace", open_link), ("Cancelar", on_cancel)],
+            on_dismiss=on_cancel
+        )
+        
     def closeEvent(self, e):
         try:
+            self._cleanup_ms_login_thread(force=True)
+            self._cleanup_launch_thread()
+            try:
+                self.particles.setActive(False)
+            except Exception:
+                pass
+            try:
+                self.play_dock.btn.setGlowing(False)
+            except Exception:
+                pass
             self.rpc.stop()
         except Exception:
             pass
@@ -931,16 +1447,24 @@ def _single_instance_guard(key: str = "GWLauncherSingletonKey") -> Optional[QSha
     return shm
 
 def main():
-    app = QApplication(sys.argv); app.setFont(QFont("Segoe UI", 10))
+    app = QApplication(sys.argv)
+    app.setFont(QFont("Segoe UI", 10))
+
     guard = _single_instance_guard()
     if guard is None:
         QMessageBox.critical(None, "GW Launcher", "Ya hay una instancia en ejecución.")
         sys.exit(1)
-    w = GWLauncher(); screen = QGuiApplication.primaryScreen().availableGeometry()
+
+    w = GWLauncher()
+    screen = QGuiApplication.primaryScreen().availableGeometry()
     w.resize(int(screen.width() * 0.8), int(screen.height() * 0.8))
     w.move(screen.center().x() - w.width() // 2, screen.center().y() - w.height() // 2)
     w.setWindowIcon(QIcon(str(ASSETS["icon"])))
-    w.show(); sys.exit(app.exec())
+    w.show()
+
+    exit_code = app.exec()
+    del guard
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()

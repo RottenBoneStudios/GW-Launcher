@@ -1,4 +1,4 @@
-#gwlauncher_backend.py
+# gwlauncher_backend.py
 from __future__ import annotations
 import argparse, json, os, subprocess, sys, uuid, requests, tarfile, zipfile, shutil, time, hashlib
 from functools import partial
@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Callable
 import minecraft_launcher_lib as mll
 from minecraft_launcher_lib import utils
-
+import auth_backend as authb
 
 GW_DIR: Path = Path.home() / ".gwlauncher"
 VERSIONS_DIR: Path = GW_DIR / "versions"
@@ -128,7 +128,8 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
     system = "Windows" if os.name == "nt" else "Linux" if os.name == "posix" else "Darwin"
     url = java_urls[java_version][system]
     package_type = ext_map[system]
-    response = requests.get(url, stream=True, allow_redirects=True, timeout=60)
+    import requests as _rq
+    response = _rq.get(url, stream=True, allow_redirects=True, timeout=60)
     response.raise_for_status()
     total = int(response.headers.get("content-length", 0))
     temp_file = JAVA_DIR / f"java_{java_version}.{package_type}"
@@ -149,10 +150,7 @@ def download_java_runtime(java_version: int, progress_cb: Optional[Callable[[int
                     total_mb = total / 1024 / 1024
                     done_mb = downloaded / 1024 / 1024
                     speed = (downloaded / 1024 / 1024) / max(now - start_time, 0.001)
-                    progress_cb(
-                        percent // 2,
-                        f"Descargando Java {java_version}… ({done_mb:.1f}/{total_mb:.1f} MB) {speed:.2f} MB/s",
-                    )
+                    progress_cb(percent // 2, f"Descargando Java {java_version}… ({done_mb:.1f}/{total_mb:.1f} MB) {speed:.2f} MB/s")
                     last_update = now
     expected_hash = hashes[java_version][system]
     if expected_hash:
@@ -275,12 +273,18 @@ def ensure_modpack(game_dir: Path) -> None:
     if marker.exists():
         return
     tmp_file = GW_DIR / "GW_ModPack.zip"
-    if not tmp_file.exists() or sha256sum(tmp_file) != MODPACK_SHA256:
-        with requests.get(MODPACK_URL, stream=True, timeout=60) as r:
+    import requests as _rq
+    def _dl():
+        with _rq.get(MODPACK_URL, stream=True, timeout=60) as r:
             r.raise_for_status()
             with open(tmp_file, "wb") as f:
                 for chunk in r.iter_content(8192):
                     f.write(chunk)
+    if not tmp_file.exists():
+        _dl()
+    if sha256sum(tmp_file) != MODPACK_SHA256:
+        tmp_file.unlink(missing_ok=True)
+        _dl()
     if sha256sum(tmp_file) != MODPACK_SHA256:
         tmp_file.unlink(missing_ok=True)
         raise RuntimeError("El modpack descargado tiene un hash inválido")
@@ -310,32 +314,32 @@ def build_command(
     port: Optional[int] = None,
     progress_cb: Optional[Callable[[int, str], None]] = None,
 ) -> List[str]:
-    opts = _offline_options(username)
+    opts = authb.get_login_options_for_username(username) or _offline_options(username)
     opts["gameDirectory"] = str(game_dir)
     if os.name == "posix":
         os.chmod(game_dir, 0o755)
-
     if server:
         opts["server"] = server
     if port:
         opts["port"] = str(port)
-
     java_version = _detect_java_version(version_id)
     java_executable = download_java_runtime(java_version, progress_cb)
-
     user_flags: List[str] = list(jvm_args or [])
     filtered_user_flags: List[str] = []
     seen_keys = set(); seen_gc = False
     for f in user_flags:
         key = _extract_flag_key(f)
         if _is_gc_flag(f):
-            if seen_gc: continue
+            if seen_gc:
+                continue
             seen_gc = True
-        if key in seen_keys: continue
+        if key in seen_keys:
+            continue
         seen_keys.add(key); filtered_user_flags.append(f)
-    if ram: filtered_user_flags.append(f"-Xmx{ram}M")
-    if filtered_user_flags: opts["jvmArguments"] = filtered_user_flags
-
+    if ram:
+        filtered_user_flags.append(f"-Xmx{ram}M")
+    if filtered_user_flags:
+        opts["jvmArguments"] = filtered_user_flags
     command = mll.command.get_minecraft_command(version_id, str(GW_DIR), opts)
     command[0] = str(java_executable)
     return command
