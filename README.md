@@ -37,7 +37,7 @@ pip install pyinstaller
 
 Genera el ejecutable:
 ```bash
-pyinstaller -F gw_launcher.py --hidden-import pypresence --name GWLauncher --icon assets/icon.ico
+python -m PyInstaller --onefile --windowed --noconfirm --clean --icon="%CD%\src\assets\icon.ico" --add-data "src/assets;assets" --name "GWLauncher" src/gw_launcher.py
 ```
 El ejecutable se generará en la carpeta dist/ como:
 dist/GWLauncher.exe   (Windows)
@@ -59,3 +59,4 @@ gw-launcher/
 - Se cierra automáticamente cuando cierras Minecraft.
 - Si intentas abrir dos veces el launcher, la segunda instancia no se abrirá.
 - Se recomienda usar Windows 10/11 o Linux moderno para compatibilidad total.
+
