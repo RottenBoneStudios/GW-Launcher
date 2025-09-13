@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Dict, Any
 from PySide6.QtCore import QPoint, QPointF, QTimer, Qt, QObject, Signal, Slot, QThread, QProcess, QUrl
 from PySide6.QtGui import QFont, QGuiApplication, QPainter, QPixmap, QTransform, QColor, QPainterPath, QLinearGradient, QRadialGradient, QBrush, QIcon, QAction, QDesktopServices
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu, QInputDialog, QCheckBox, QSizePolicy
+from PySide6.QtWidgets import QDialog, QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QPushButton, QTextBrowser, QTextEdit, QVBoxLayout, QWidget, QMessageBox, QComboBox, QGridLayout, QSpinBox, QSystemTrayIcon, QMenu, QInputDialog, QCheckBox, QSizePolicy
 from PySide6.QtCore import QSharedMemory
 from functools import lru_cache
 
@@ -870,8 +870,15 @@ class GWLauncher(QMainWindow):
         self.btn_edit.setProperty("class", "side")
         self.btn_edit.setEnabled(False)
         self.btn_edit.setCursor(Qt.PointingHandCursor)
+        
+        self.btn_mods = QPushButton("🧩 Instalar Mods", footer)
+        self.btn_mods.setObjectName("btnEdit")
+        self.btn_mods.setProperty("class", "side")
+        self.btn_mods.setCursor(Qt.PointingHandCursor)
+        
         fv.addWidget(self.btn_new)
         fv.addWidget(self.btn_edit)
+        fv.addWidget(self.btn_mods)
         self._sync_btn_edit_style()
         sv.addWidget(st)
         sv.addWidget(self.profiles, 1)
@@ -921,6 +928,7 @@ class GWLauncher(QMainWindow):
         self.tray.show()
         self.btn_new.clicked.connect(self._create_profile)
         self.btn_edit.clicked.connect(lambda: self._open_editor(self._current_profile_name()))
+        self.btn_mods.clicked.connect(self._open_modrinth)
         self.profiles.itemDoubleClicked.connect(lambda _: self._launch())
         self.play_dock.btn.clicked.connect(self._launch)
         self._relayout()
@@ -943,7 +951,13 @@ class GWLauncher(QMainWindow):
         self._refresh_versions_async()
         from auth_backend import list_accounts
         self._refresh_login_status()
-
+        
+    def _open_modrinth(self):
+        from modrinth_browser import ModrinthBrowser
+        dlg = ModrinthBrowser()
+        dlg.setWindowModality(Qt.ApplicationModal)
+        dlg.exec()
+        
     def _refresh_login_status(self):
         from auth_backend import list_accounts
         accounts = list_accounts()
@@ -1053,6 +1067,24 @@ class GWLauncher(QMainWindow):
         lay.addWidget(btn_trash, 0, Qt.AlignVCenter)
         return card
 
+    def _update_profile_glow(self):
+        for i in range(self.profiles.count()):
+            item = self.profiles.item(i)
+            w = self.profiles.itemWidget(item)
+            if not w:
+                continue
+            if item.isSelected():
+                w.setStyleSheet(
+                    "#profileCard{background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #9333ea, stop:1 #06b6d4); "
+                    "border-radius: 10px;} "
+                    "#lblName{font-size:16px; color: #ffffff;} "
+                )
+            else:
+                w.setStyleSheet(
+                    "#profileCard{background: rgba(21,23,56,0.75); border-radius: 10px;} "
+                    "#lblName{font-size:16px; color: #ffffff;} "
+                )
+
     def changeEvent(self, e):
         from PySide6.QtCore import QEvent
         super().changeEvent(e)
@@ -1155,6 +1187,7 @@ class GWLauncher(QMainWindow):
         self.btn_edit.setEnabled(has); self._sync_btn_edit_style()
         self.headline.setText(self._current_profile_name() if has else "Selecciona un perfil")
         self._set_play_ready(has)
+        self._update_profile_glow()
 
     def _sync_btn_edit_style(self):
         self.btn_edit.setProperty("enabled", "true" if self.btn_edit.isEnabled() else "false"); self.btn_edit.style().unpolish(self.btn_edit); self.btn_edit.style().polish(self.btn_edit)

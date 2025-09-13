@@ -17,6 +17,14 @@ _PROFILES_FILE = GW_DIR / "profiles.json"
 MODPACK_URL = "https://github.com/RottenBoneStudios/GW-Launcher/releases/download/1.0.0v_BUILD-0011/GW_ModPack.zip"
 MODPACK_SHA256 = "b61368e07729ba4704c48b5f88a38ea51fe6073c11e908fc7a0136d91aef06a9"
 
+def _popen_no_window(*args, **kwargs):
+    if os.name == "nt":
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        kwargs["startupinfo"] = si
+    return _real_popen(*args, **kwargs)
+
 def _ensure_dir() -> None:
     for d in (GW_DIR, VERSIONS_DIR, INSTANCES_DIR, JAVA_DIR):
         d.mkdir(parents=True, exist_ok=True)
@@ -229,30 +237,38 @@ def install_version(version: str) -> None:
 
 def install_modloader(loader: ModLoader, version: str) -> str:
     _ensure_dir()
-    if loader == "forge":
-        fv = mll.forge.find_forge_version(version)
-        if not fv or not mll.forge.supports_automatic_install(fv):
-            return version
-        mid = mll.forge.forge_to_installed_version(fv)
-        if mid not in _installed_ids():
-            mll.forge.install_forge_version(fv, str(GW_DIR))
-        return mid
-    if loader == "quilt":
-        try:
-            mll.quilt.install_quilt(version, str(GW_DIR))
-        except Exception:
-            return version
-        quilts = [vid for vid in _installed_ids() if version in vid and "quilt" in vid.lower()]
-        return quilts[-1] if quilts else version
-    if loader == "fabric":
-        try:
-            mll.fabric.install_fabric(version, str(GW_DIR))
-        except Exception:
-            return version
-        facs = [vid for vid in _installed_ids() if version in vid and "fabric" in vid.lower()]
-        return facs[-1] if facs else version
-    return version
 
+    global _real_popen
+    _real_popen = subprocess.Popen
+    subprocess.Popen = _popen_no_window
+
+    try:
+        if loader == "forge":
+            fv = mll.forge.find_forge_version(version)
+            if not fv or not mll.forge.supports_automatic_install(fv):
+                return version
+            mid = mll.forge.forge_to_installed_version(fv)
+            if mid not in _installed_ids():
+                mll.forge.install_forge_version(fv, str(GW_DIR))
+            return mid
+        if loader == "quilt":
+            try:
+                mll.quilt.install_quilt(version, str(GW_DIR))
+            except Exception:
+                return version
+            quilts = [vid for vid in _installed_ids() if version in vid and "quilt" in vid.lower()]
+            return quilts[-1] if quilts else version
+        if loader == "fabric":
+            try:
+                mll.fabric.install_fabric(version, str(GW_DIR))
+            except Exception:
+                return version
+            facs = [vid for vid in _installed_ids() if version in vid and "fabric" in vid.lower()]
+            return facs[-1] if facs else version
+        return version
+    finally:
+        subprocess.Popen = _real_popen
+        
 def _offline_options(username: str) -> mll.types.MinecraftOptions:
     u = uuid.uuid3(uuid.NAMESPACE_DNS, username)
     return {"username": username, "uuid": str(u).replace("-", ""), "token": "0"}
